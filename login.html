@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>مصنع الشيخ للفوم | تسجيل الدخول</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ks-kinpaku: oklch(84% 0.19 80.46);
+      --ks-kinpaku-rich: oklch(77% 0.13 82);
+      --ks-lacquer: oklch(7% 0.006 95);
+      --ks-lacquer-deep: oklch(4% 0.004 95);
+      --ks-raised: oklch(11% 0.006 95);
+      --ks-champagne: oklch(91% 0 0);
+      --ks-text-muted: oklch(72% 0 0);
+      --ks-rule: oklch(78% 0 0 / 0.16);
+      --ks-warning: oklch(58% 0.15 35);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh; display: grid; place-items: center; padding: 24px;
+      color: var(--ks-champagne); background: radial-gradient(circle at 50% 20%, oklch(18% 0.018 82), transparent 50%), var(--ks-lacquer);
+      font-family: 'Cairo', sans-serif;
+    }
+    main {
+      width: min(100%, 440px); padding: 40px 36px; background: var(--ks-raised);
+      border: 1px solid var(--ks-rule); border-radius: 6px; box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    }
+    .brand-wrap { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+    .mark {
+      width: 46px; height: 46px; display: grid; place-items: center;
+      color: var(--ks-lacquer); background: var(--ks-kinpaku); border-radius: 4px; font-size: 22px; font-weight: 700;
+    }
+    h1 { font-size: 22px; font-weight: 700; color: var(--ks-champagne); line-height: 1.2; }
+    .subtitle { font-size: 13px; color: var(--ks-text-muted); margin-top: 4px; }
+    form { display: grid; gap: 18px; }
+    label { display: grid; gap: 6px; color: var(--ks-text-muted); font-size: 13px; font-weight: 600; }
+    input {
+      width: 100%; padding: 12px 14px; color: var(--ks-champagne); background: var(--ks-lacquer-deep);
+      border: 1px solid var(--ks-rule); border-radius: 4px; outline: 0; font: inherit; font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--ks-kinpaku); }
+    button {
+      margin-top: 10px; padding: 13px; color: var(--ks-lacquer); background: var(--ks-kinpaku);
+      border: 0; border-radius: 4px; cursor: pointer; font: inherit; font-weight: 700; font-size: 15px;
+      transition: background 0.2s;
+    }
+    button:hover { background: var(--ks-kinpaku-rich); }
+    button:disabled { cursor: wait; opacity: 0.65; }
+    #message { min-height: 22px; margin-top: 8px; color: var(--ks-warning); font-size: 13px; text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand-wrap">
+      <div class="mark" aria-hidden="true">🏭</div>
+      <div>
+        <h1>مصنع الشيخ للفوم</h1>
+        <div class="subtitle">لوحة تحكم المبيعات المباشرة (Odoo Live)</div>
+      </div>
+    </div>
+    <form id="loginForm">
+      <label for="username">البريد الإلكتروني / اسم المستخدم
+        <input id="username" name="username" type="text" autocomplete="username" value="info@shekhfoam.com" required />
+      </label>
+      <label for="password">كلمة المرور
+        <input id="password" name="password" type="password" autocomplete="current-password" value="msh@2025" required />
+      </label>
+      <button type="submit" id="loginButton">تسجيل الدخول</button>
+      <div id="message" role="alert" aria-live="polite"></div>
+    </form>
+  </main>
+  <script>
+    const form = document.getElementById('loginForm');
+    const button = document.getElementById('loginButton');
+    const message = document.getElementById('message');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      message.textContent = '';
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ username: form.username.value, password: form.password.value })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'فشل تسجيل الدخول، يرجى التحقق من البيانات');
+        window.location.assign('/');
+      } catch (error) {
+        console.error('Login request failed:', error);
+        message.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
+

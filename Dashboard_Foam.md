@@ -1,0 +1,1961 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>مصنع الشيخ للفوم | لوحة تحكم المبيعات</title>
+  <meta name="description" content="لوحة تحكم شاملة لمتابعة مبيعات مصنع الشيخ للفوم" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Impeccable Design Tokens */
+      --ks-kinpaku: oklch(84% 0.19 80.46);
+      --ks-kinpaku-rich: oklch(77% 0.13 82);
+      --ks-patina: oklch(70% 0.12 188);
+      --ks-patina-deep: oklch(49% 0.08 188);
+      --ks-lacquer: oklch(7% 0.006 95);
+      --ks-lacquer-deep: oklch(4% 0.004 95);
+      --ks-raised: oklch(11% 0.006 95);
+      --ks-graphite: oklch(15% 0.008 95);
+      --ks-champagne: oklch(91% 0 0);
+      --ks-text-warm: oklch(88% 0 0);
+      --ks-text-muted: oklch(72% 0 0);
+      --ks-rule: oklch(78% 0 0 / 0.16);
+      --ks-rule-strong: oklch(74% 0.09 82 / 0.6);
+      --ks-warning: oklch(58% 0.15 35);
+      --ks-success: oklch(45% 0.18 145);
+
+      --bg: var(--ks-lacquer);
+      --bg-card: var(--ks-raised);
+      --bg-card2: var(--ks-graphite);
+      --border: var(--ks-rule);
+      --border2: var(--ks-rule);
+      --text: var(--ks-text-warm);
+      --text2: var(--ks-champagne);
+      --text3: var(--ks-text-muted);
+      
+      --blue: var(--ks-kinpaku);
+      --cyan: var(--ks-patina);
+      --green: var(--ks-success);
+      --red: var(--ks-warning);
+      --amber: var(--ks-kinpaku-rich);
+      --purple: var(--ks-kinpaku);
+      --teal: var(--ks-patina);
+    }
+
+    html { direction: rtl; scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Albert Sans', 'Cairo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 16px;
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--ks-lacquer-deep); }
+    ::-webkit-scrollbar-thumb { background: var(--ks-graphite); border-radius: 2px; }
+
+    /* ─── HEADER ─── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--ks-lacquer-deep);
+      border-bottom: 1px solid var(--ks-rule);
+    }
+    .header-top {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--ks-rule);
+      flex-wrap: wrap;
+    }
+    .logo-wrap {
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    }
+    .logo-icon {
+      width: 38px; height: 38px; border-radius: 2px;
+      background: var(--ks-kinpaku);
+      color: var(--ks-lacquer);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; border: 1px solid var(--ks-rule-strong);
+    }
+    .logo-title { 
+      font-family: 'Alumni Sans', 'Cairo', sans-serif; 
+      font-size: 20px; font-weight: 300; color: var(--ks-champagne); 
+      line-height: 1.2; letter-spacing: 0.05em; 
+    }
+    .logo-sub { 
+      font-family: 'SFMono-Regular', Consolas, monospace; 
+      font-size: 11px; color: var(--ks-text-muted); 
+      letter-spacing: 0.18em; text-transform: uppercase; 
+    }
+    .divider { width: 1px; height: 24px; background: var(--ks-rule); flex-shrink: 0; }
+
+    .search-bar {
+      flex: 1; max-width: 380px; position: relative;
+    }
+    .search-bar input {
+      width: 100%; background: var(--ks-lacquer-deep);
+      border: 1px solid var(--ks-rule); border-radius: 4px;
+      padding: 14px 36px 14px 16px;
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 14px;
+      color: var(--ks-champagne); outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-bar input:focus { border-color: var(--ks-rule-strong); }
+    .search-bar input::placeholder { color: var(--ks-text-muted); }
+    .search-icon {
+      position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      color: var(--ks-text-muted); font-size: 14px; pointer-events: none;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+
+    .notif-btn {
+      position: relative; width: 36px; height: 36px; border-radius: 4px;
+      background: transparent; border: 1px solid var(--ks-rule);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; transition: border-color 0.2s;
+    }
+    .notif-btn:hover { border-color: var(--ks-rule-strong); }
+    .notif-dot {
+      position: absolute; top: 6px; right: 6px; width: 6px; height: 6px;
+      background: var(--ks-warning); border-radius: 0;
+    }
+
+    .export-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 0 24px; height: 36px; border-radius: 2px;
+      background: var(--ks-kinpaku);
+      color: var(--ks-lacquer); font-family: 'Albert Sans', 'Cairo', sans-serif;
+      font-size: 14px; font-weight: 500; border: none;
+      cursor: pointer; transition: background 0.2s; white-space: nowrap;
+    }
+    .export-btn:hover { background: var(--ks-kinpaku-rich); }
+
+    /* ─── Filter Bar ─── */
+    .filter-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 24px; flex-wrap: wrap; background: var(--ks-lacquer);
+    }
+    .date-tabs {
+      display: flex; align-items: center; gap: 0;
+      background: var(--ks-lacquer-deep); border: 1px solid var(--ks-rule);
+      border-radius: 4px; padding: 2px; flex-shrink: 0;
+    }
+    .date-tab {
+      padding: 6px 16px; border-radius: 2px; border: none;
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; color: var(--ks-text-muted); background: transparent;
+    }
+    .date-tab.active {
+      background: var(--ks-graphite); color: var(--ks-champagne); border: 1px solid var(--ks-rule);
+    }
+    .date-tab:hover:not(.active) { color: var(--ks-text-warm); }
+
+    .filter-select {
+      background: var(--ks-lacquer-deep); border: 1px solid var(--ks-rule);
+      border-radius: 4px; padding: 8px 16px;
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 13px; color: var(--ks-champagne);
+      outline: none; cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23720000'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: left 12px center;
+      padding-left: 32px;
+    }
+    .filter-select option { background: var(--ks-lacquer); color: var(--ks-champagne); }
+
+    .spacer { flex: 1; }
+
+    .toggle-wrap {
+      display: flex; align-items: center; gap: 8px;
+      background: transparent; border: 1px solid var(--ks-rule);
+      border-radius: 4px; padding: 6px 12px; flex-shrink: 0;
+    }
+    .toggle-label { font-size: 12px; font-weight: 500; }
+    .toggle-label.active-val { color: var(--ks-kinpaku); }
+    .toggle-label.inactive-val { color: var(--ks-text-muted); }
+    .toggle-track {
+      width: 32px; height: 16px; border-radius: 8px; cursor: pointer;
+      position: relative; transition: background 0.3s;
+      background: var(--ks-graphite-2); border: 1px solid var(--ks-rule); flex-shrink: 0;
+    }
+    .toggle-thumb {
+      position: absolute; top: 1px; width: 12px; height: 12px;
+      border-radius: 50%; background: var(--ks-champagne); transition: right 0.3s;
+      right: 2px;
+    }
+    .toggle-track.qty .toggle-thumb { right: calc(100% - 14px); }
+    .toggle-track.qty { background: var(--ks-patina); }
+
+    .churn-badge {
+      display: flex; align-items: center; gap: 6px;
+      background: transparent; border: 1px solid var(--ks-warning);
+      border-radius: 2px; padding: 6px 12px; flex-shrink: 0;
+    }
+    .churn-dot {
+      width: 6px; height: 6px; border-radius: 0;
+      background: var(--ks-warning); flex-shrink: 0;
+    }
+    .churn-badge-text { font-size: 13px; font-weight: 500; color: var(--ks-warning); }
+
+    /* ─── MAIN LAYOUT ─── */
+    .main {
+      max-width: 1700px; margin: 0 auto;
+      padding: 32px 24px; display: flex; flex-direction: column; gap: 32px;
+    }
+
+    /* ─── SECTION HEADER ─── */
+    .section-header {
+      display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: 'Alumni Sans', 'Cairo', sans-serif;
+      font-size: 32px; font-weight: 300;
+      color: var(--ks-champagne); line-height: 1.04;
+    }
+    .section-sub { font-size: 14px; color: var(--ks-text-muted); }
+    .section-bar { display: none; } /* removed */
+
+    /* ─── KPI CARDS ─── */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    }
+    @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px)  { .kpi-grid { grid-template-columns: 1fr; } }
+
+    .kpi-card {
+      border-radius: 4px; padding: 24px;
+      background: var(--ks-raised); border: 1px solid var(--ks-rule);
+      position: relative; overflow: hidden;
+    }
+    .kpi-card:hover { border-color: var(--ks-rule-strong); }
+
+    .kpi-bg { display: none; }
+    .kpi-deco { display: none; }
+
+    .kpi-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    .kpi-sub { 
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; font-weight: 500; color: var(--ks-text-muted); 
+      text-transform: uppercase; letter-spacing: 0.18em; margin-bottom: 8px; 
+    }
+    .kpi-title { font-size: 15px; font-weight: 500; color: var(--ks-champagne); }
+
+    .kpi-icon {
+      width: 32px; height: 32px; border-radius: 2px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; background: transparent; border: 1px solid var(--ks-rule);
+      color: var(--ks-champagne);
+    }
+    .kpi-card.blue .kpi-icon { border-color: var(--ks-kinpaku); color: var(--ks-kinpaku); }
+    .kpi-card.green .kpi-icon { border-color: var(--ks-patina); color: var(--ks-patina); }
+    .kpi-card.red .kpi-icon { border-color: var(--ks-warning); color: var(--ks-warning); }
+    .kpi-card.purple .kpi-icon { border-color: var(--ks-kinpaku); color: var(--ks-kinpaku); }
+
+    .kpi-value { 
+      font-family: 'Alumni Sans', sans-serif;
+      font-size: 48px; font-weight: 100; color: var(--ks-champagne); 
+      line-height: 1.02; letter-spacing: -0.01em; 
+    }
+    .kpi-full  { font-size: 13px; color: var(--ks-text-muted); margin-top: 4px; margin-bottom: 16px; }
+
+    .kpi-alert {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: transparent; border: 1px solid var(--ks-warning);
+      border-radius: 2px; padding: 4px 8px; margin-bottom: 16px;
+      font-size: 12px; font-weight: 500; color: var(--ks-warning);
+    }
+
+    .kpi-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--ks-rule); padding-top: 16px; }
+    .kpi-trend  { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+    .kpi-trend.up   { color: var(--ks-patina); }
+    .kpi-trend.down { color: var(--ks-warning); }
+    .kpi-extra { font-size: 12px; color: var(--ks-text-muted); }
+    .kpi-extra span { color: var(--ks-champagne); font-weight: 500; }
+
+    /* ─── CHARTS ─── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 1200px) { .charts-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 700px)  { .charts-grid { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--ks-raised); border: 1px solid var(--ks-rule);
+      border-radius: 4px; padding: 24px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .chart-detail-card {
+      background: var(--ks-lacquer-deep); border: 1px solid var(--ks-rule-strong);
+      border-radius: 4px; padding: 14px 16px; display: grid;
+      grid-template-columns: repeat(3, 1fr); gap: 12px;
+    }
+    .chart-detail-title { grid-column: 1 / -1; color: var(--ks-champagne); font-size: 14px; font-weight: 600; }
+    .chart-detail-label { color: var(--ks-text-muted); font-size: 11px; }
+    .chart-detail-value { color: var(--ks-champagne); font-size: 14px; font-weight: 600; margin-top: 2px; }
+    @media (max-width: 600px) { .chart-detail-card { grid-template-columns: 1fr; } }
+    .chart-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .chart-title-wrap { display: flex; align-items: center; gap: 0; }
+    .chart-bar { display: none; }
+    .chart-title { font-size: 18px; font-weight: 500; color: var(--ks-champagne); }
+    .chart-canvas-wrap { position: relative; }
+
+    .tab-group {
+      display: flex; gap: 0; background: var(--ks-lacquer-deep);
+      border-radius: 2px; padding: 2px; border: 1px solid var(--ks-rule);
+    }
+    .tab-btn {
+      padding: 4px 12px; border-radius: 2px; border: none;
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; color: var(--ks-text-muted); background: transparent;
+    }
+    .tab-btn.active-top { background: var(--ks-kinpaku); color: var(--ks-lacquer); }
+    .tab-btn.active-bot { background: var(--ks-warning); color: var(--ks-lacquer); }
+    .tab-btn:hover:not(.active-top):not(.active-bot) { color: var(--ks-champagne); }
+
+    /* Churn warnings */
+    .churn-list { display: flex; flex-direction: column; gap: 8px; }
+    .churn-item {
+      display: flex; align-items: center; justify-content: space-between;
+      border-radius: 2px; padding: 10px 14px; border: 1px solid var(--ks-rule);
+      font-size: 13px; gap: 8px; background: var(--ks-lacquer-deep);
+    }
+    .churn-item.high   { border-color: var(--ks-warning); }
+    .churn-item.medium { border-color: var(--ks-kinpaku-rich); }
+    .churn-item.low    { border-color: var(--ks-rule); }
+    .churn-item-left  { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .churn-item-dot   { width: 6px; height: 6px; border-radius: 0; flex-shrink: 0; }
+    .churn-item.high   .churn-item-dot { background: var(--ks-warning); }
+    .churn-item.medium .churn-item-dot { background: var(--ks-kinpaku-rich); }
+    .churn-item.low    .churn-item-dot { background: var(--ks-text-muted); }
+    .churn-item-name { color: var(--ks-champagne); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .churn-item-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    .churn-item-date  { color: var(--ks-text-muted); font-size: 12px; }
+    .churn-risk {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 2px; letter-spacing: 0.18em;
+    }
+    .churn-item.high   .churn-risk { border: 1px solid var(--ks-warning); color: var(--ks-warning); }
+    .churn-item.medium .churn-risk { border: 1px solid var(--ks-kinpaku-rich); color: var(--ks-kinpaku-rich); }
+    .churn-item.low    .churn-risk { border: 1px solid var(--ks-rule); color: var(--ks-text-muted); }
+
+    /* ─── SALES REP PERF ─── */
+    .reps-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+    }
+    .reps-card {
+      background: var(--ks-raised); border: 1px solid var(--ks-rule);
+      border-radius: 4px; padding: 24px;
+    }
+    .rep-table-wrap { overflow-x: auto; }
+    .rep-table { width: 100%; min-width: 760px; border-collapse: collapse; }
+    .rep-table thead tr { background: var(--ks-lacquer-deep); border-bottom: 1px solid var(--ks-rule-strong); }
+    .rep-table th, .rep-table td { padding: 13px 16px; border-bottom: 1px solid var(--ks-rule); text-align: right; white-space: nowrap; }
+    .rep-table th { color: var(--ks-text-muted); font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; font-weight: 500; }
+    .rep-table td { color: var(--ks-champagne); font-size: 13px; }
+    .rep-table tbody tr { transition: background 0.15s; }
+    .rep-table tbody tr:hover { background: var(--ks-graphite); }
+    .rep-table .rep-rank { color: var(--ks-kinpaku); font-family: 'SFMono-Regular', Consolas, monospace; font-weight: 700; }
+    .rep-table .rep-name { color: var(--ks-champagne); font-weight: 600; }
+    .rep-table .rep-region { color: var(--ks-text-muted); font-size: 12px; }
+    .rep-table .rep-pct { font-weight: 700; }
+    .rep-table .rep-pct.over { color: var(--ks-patina); }
+    .rep-table .rep-pct.ok { color: var(--ks-kinpaku); }
+    .rep-table .rep-pct.low { color: var(--ks-warning); }
+    .rep-table .rep-bar-track { display: inline-block; width: 90px; height: 4px; margin-left: 10px; vertical-align: middle; background: var(--ks-rule); border-radius: 2px; overflow: hidden; }
+    .rep-table .rep-bar-fill { height: 4px; border-radius: 2px; }
+    .rep-table .rep-bar-fill.over { background: var(--ks-patina); }
+    .rep-table .rep-bar-fill.ok { background: var(--ks-kinpaku); }
+    .rep-table .rep-bar-fill.low { background: var(--ks-warning); }
+    .rep-table .rep-value { color: var(--ks-kinpaku); font-weight: 600; }
+    .rep-table .rep-explanation { color: var(--ks-text-muted); font-size: 12px; }
+    .rep-table .rep-main-row { cursor: pointer; }
+    .rep-table .rep-main-row.is-expanded { background: var(--ks-graphite); }
+    .rep-table .rep-toggle { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; margin-left: 8px; border: 1px solid var(--ks-rule); color: var(--ks-text-muted); font-size: 11px; transition: transform .2s, color .2s, border-color .2s; }
+    .rep-table .rep-main-row.is-expanded .rep-toggle { transform: rotate(180deg); color: var(--ks-kinpaku); border-color: var(--ks-kinpaku); }
+    .rep-table .rep-detail-row { display: none; background: var(--ks-lacquer); }
+    .rep-table .rep-detail-row.is-expanded { display: table-row; }
+    .rep-table .rep-detail-panel { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--ks-rule-strong); }
+    .rep-table .rep-detail-card { min-width: 0; padding: 10px 12px; background: var(--ks-raised); border: 1px solid var(--ks-rule); border-radius: 3px; }
+    .rep-table .rep-detail-label { display: block; color: var(--ks-text-muted); font-size: 10px; margin-bottom: 3px; white-space: normal; }
+    .rep-table .rep-detail-value { display: block; color: var(--ks-champagne); font-size: 13px; font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
+    .rep-table .rep-detail-card.kpi .rep-detail-value { color: var(--ks-patina); }
+    .rep-table .rep-detail-card.target .rep-detail-value { color: var(--ks-kinpaku); }
+    .rep-table .rep-detail-card.gap .rep-detail-value { color: var(--ks-warning); }
+    @media (max-width: 800px) { .rep-table .rep-detail-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+    /* ─── REGIONAL MINI-CARDS ─── */
+    .region-mini-grid {
+      display: grid; grid-template-columns: repeat(2,1fr); gap: 8px;
+    }
+    .region-mini {
+      background: var(--ks-lacquer-deep); border: 1px solid var(--ks-rule); border-radius: 2px; padding: 10px 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .region-mini-name { font-size: 13px; font-weight: 500; color: var(--ks-champagne); }
+    .region-mini-val  { font-size: 12px; color: var(--ks-text-muted); }
+    .region-mini-rate { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 2px; flex-shrink: 0; }
+    .region-mini-rate.good { border: 1px solid var(--ks-patina); color: var(--ks-patina); }
+    .region-mini-rate.bad  { border: 1px solid var(--ks-warning); color: var(--ks-warning); }
+
+    /* ─── DRILL-DOWN TABLE ─── */
+    .table-card {
+      background: var(--ks-raised); border: 1px solid var(--ks-rule); border-radius: 4px; overflow: hidden;
+    }
+    .table-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; border-bottom: 1px solid var(--ks-rule); flex-wrap: wrap; gap: 12px;
+    }
+    .table-toolbar-left { display: flex; align-items: center; gap: 12px; }
+    .table-toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .table-hint { font-size: 13px; color: var(--ks-text-muted); }
+
+    .tbl-btn {
+      padding: 6px 16px; border-radius: 2px; border: 1px solid var(--ks-rule);
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 13px; font-weight: 500;
+      color: var(--ks-champagne); background: transparent; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tbl-btn:hover { border-color: var(--ks-rule-strong); }
+    .tbl-export-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 2px; border: 1px solid var(--ks-kinpaku);
+      background: transparent;
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 13px; font-weight: 500;
+      color: var(--ks-kinpaku); cursor: pointer; transition: all 0.2s;
+    }
+    .tbl-export-btn:hover { background: var(--ks-kinpaku); color: var(--ks-lacquer); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    thead tr { background: var(--ks-lacquer-deep); border-bottom: 1px solid var(--ks-rule); }
+    thead th {
+      padding: 14px 20px; text-align: right;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; font-weight: 500; color: var(--ks-text-muted);
+      text-transform: uppercase; letter-spacing: .18em; white-space: nowrap;
+    }
+    thead th.center { text-align: center; }
+    thead th.left   { text-align: left; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--ks-rule);
+      transition: background 0.15s; cursor: pointer;
+    }
+    tbody tr:hover { background: var(--ks-graphite); }
+    tbody tr.level-state { background: var(--ks-lacquer); }
+    tbody tr.level-city  { background: var(--ks-lacquer-deep); }
+    tbody tr.level-cust  { background: var(--ks-raised); }
+
+    td { padding: 12px 20px; font-size: 14px; white-space: nowrap; }
+    td.center { text-align: center; }
+    td.left    { text-align: left; }
+
+    .row-indent { display: flex; align-items: center; gap: 8px; }
+    .row-expand {
+      width: 24px; height: 24px; border-radius: 2px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; transition: all 0.2s; border: 1px solid transparent;
+    }
+    .row-expand.expandable { background: transparent; border-color: var(--ks-rule); color: var(--ks-text-muted); cursor: pointer; }
+    .row-expand.expandable:hover { border-color: var(--ks-rule-strong); color: var(--ks-champagne); }
+    .row-expand.expanded { border-color: var(--ks-kinpaku); color: var(--ks-kinpaku); }
+    .row-expand.leaf { opacity: 0; pointer-events: none; }
+    .row-icon { font-size: 16px; flex-shrink: 0; }
+    .row-name { font-weight: 500; }
+    .row-name.state { color: var(--ks-champagne); font-size: 15px; }
+    .row-name.city  { color: var(--ks-text-warm); }
+    .row-name.cust  { color: var(--ks-text-muted); }
+    .row-subrep { font-size: 12px; color: var(--ks-text-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+
+    .val-blue   { font-weight: 500; color: var(--ks-kinpaku); }
+    .val-green  { font-weight: 500; color: var(--ks-patina); }
+    .val-red    { font-weight: 500; color: var(--ks-warning); }
+    .val-warn   { font-weight: 500; color: var(--ks-kinpaku-rich); }
+    .val-normal { font-weight: 400; color: var(--ks-champagne); }
+
+    .rate-wrap  { display: flex; align-items: center; gap: 12px; }
+    .rate-bar   { flex: 1; height: 2px; background: var(--ks-rule); border-radius: 0; min-width: 40px; }
+    .rate-fill  { height: 2px; border-radius: 0; }
+    .rate-fill.good { background: var(--ks-patina); }
+    .rate-fill.ok   { background: var(--ks-kinpaku); }
+    .rate-fill.bad  { background: var(--ks-warning); }
+    .rate-pct   { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; font-weight: 500; flex-shrink: 0; }
+    .rate-pct.good { color: var(--ks-patina); }
+    .rate-pct.ok   { color: var(--ks-kinpaku); }
+    .rate-pct.bad  { color: var(--ks-warning); }
+    .rate-alert { color: var(--ks-warning); margin-left: 6px; }
+
+    tfoot tr { background: var(--ks-lacquer-deep); border-top: 1px solid var(--ks-rule-strong); }
+    tfoot td { padding: 14px 20px; font-size: 14px; font-weight: 500; }
+
+    .table-legend {
+      display: flex; align-items: center; gap: 24px; padding: 16px 24px;
+      border-top: 1px solid var(--ks-rule); background: var(--ks-lacquer-deep); flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; color: var(--ks-text-muted); letter-spacing: 0.18em; text-transform: uppercase; }
+    .legend-dot  { width: 6px; height: 6px; border-radius: 0; flex-shrink: 0; }
+
+    /* Footer */
+    .footer {
+      text-align: center; padding: 32px 24px; border-top: 1px solid var(--ks-rule-strong);
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; color: var(--ks-text-muted); margin-top: 16px;
+      letter-spacing: 0.18em; text-transform: uppercase;
+    }
+
+    .brd-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+    .brd-panel { background:var(--ks-raised); border:1px solid var(--ks-rule); border-radius:4px; padding:24px; }
+    .brd-panel.full { grid-column:1/-1; }
+    .panel-kicker { color:var(--ks-kinpaku); font-family:Consolas,monospace; font-size:11px; letter-spacing:.12em; margin-bottom:6px; }
+    .panel-title { color:var(--ks-champagne); font-size:18px; font-weight:600; margin-bottom:16px; }
+    .matrix-wrap { overflow:auto; }
+    .matrix { min-width:760px; }
+    .matrix th, .matrix td { padding:12px 14px; border-bottom:1px solid var(--ks-rule); text-align:right; white-space:nowrap; }
+    .matrix th { color:var(--ks-text-muted); font-size:11px; font-weight:500; }
+    .matrix td { color:var(--ks-champagne); font-size:13px; }
+    .matrix td strong { color:var(--ks-kinpaku); }
+    .report-list { display:grid; gap:10px; }
+    .report-row { display:grid; grid-template-columns:minmax(150px,1fr) 110px 110px 90px; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--ks-rule); }
+    .report-row:last-child { border-bottom:0; }
+    .report-label { color:var(--ks-champagne); font-size:13px; }
+    .report-value { color:var(--ks-text-warm); font-size:13px; text-align:left; }
+    .report-rate { color:var(--ks-patina); font-size:12px; text-align:left; }
+    .return-total { color:var(--ks-warning); font-size:24px; font-weight:600; margin-bottom:12px; }
+    .source-note { display:inline-flex; align-items:center; gap:8px; color:var(--ks-patina); border:1px solid var(--ks-patina); padding:5px 10px; border-radius:2px; font-size:12px; }
+    .source-control { display:flex; align-items:center; gap:8px; color:var(--ks-patina); border:1px solid var(--ks-patina); padding:4px 8px; border-radius:2px; font-size:12px; }
+    .source-control select { background:var(--ks-lacquer-deep); color:var(--ks-champagne); border:1px solid var(--ks-rule); border-radius:2px; padding:3px 8px; font-family:'Cairo',sans-serif; font-size:12px; }
+    .source-control select:focus { outline:none; border-color:var(--ks-rule-strong); }
+    .source-note::before { content:'●'; font-size:9px; }
+    .custom-date { display:none; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+    .custom-date-group { display:flex; flex-direction:column; gap:4px; }
+    .custom-date-label { font-size:11px; font-weight:600; color:var(--ks-kinpaku); text-transform:uppercase; letter-spacing:0.12em; }
+    .custom-date input { background:var(--ks-lacquer-deep); color:var(--ks-champagne); border:1px solid var(--ks-rule); padding:7px 10px; border-radius:3px; font-family:'Cairo',sans-serif; font-size:13px; min-width:148px; }
+    .custom-date input:focus { outline:none; border-color:var(--ks-rule-strong); }
+    .custom-date-sep { font-size:18px; color:var(--ks-text-muted); padding-bottom:6px; }
+    .returns-table-card { background:var(--ks-raised); border:1px solid var(--ks-rule); border-radius:4px; overflow:hidden; }
+    .returns-toolbar { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid var(--ks-rule); flex-wrap:wrap; gap:12px; }
+    .returns-table-wrap { overflow-x:auto; }
+    .returns-table { width:100%; border-collapse:collapse; min-width:820px; }
+    .returns-table thead tr { background:var(--ks-lacquer-deep); border-bottom:1px solid var(--ks-rule-strong); }
+    .returns-table th { padding:13px 16px; color:var(--ks-text-muted); font-family:'SFMono-Regular',Consolas,monospace; font-size:11px; font-weight:500; text-align:right; text-transform:uppercase; letter-spacing:.14em; white-space:nowrap; }
+    .returns-table td { padding:12px 16px; font-size:13px; color:var(--ks-champagne); border-bottom:1px solid var(--ks-rule); white-space:nowrap; }
+    .returns-table tbody tr:hover { background:var(--ks-graphite); }
+    .returns-table .ret-amt { color:var(--ks-warning); font-weight:600; }
+    .returns-table .ret-badge { font-family:'SFMono-Regular',Consolas,monospace; font-size:10px; font-weight:500; padding:2px 8px; border-radius:2px; border:1px solid; }
+    .returns-table .ret-badge.yes { border-color:var(--ks-warning); color:var(--ks-warning); }
+    .returns-table .ret-badge.no  { border-color:var(--ks-rule); color:var(--ks-text-muted); }
+    @media (max-width:800px) { .brd-grid { grid-template-columns:1fr; } .brd-panel.full { grid-column:auto; } .report-row { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+
+
+
+<!-- ═══════════════════════════ HEADER ═══════════════════════════ -->
+<header class="header" role="banner">
+  <div class="header-top">
+    <!-- Logo -->
+    <div class="logo-wrap">
+      <div class="logo-icon">🏭</div>
+      <div>
+        <div class="logo-title">مصنع الشيخ للفوم</div>
+        <div class="logo-sub">لوحة تحكم المبيعات</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+
+    <!-- Search -->
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="text" placeholder="البحث في العملاء، المناطق، المنتجات..." id="globalSearch" />
+    </div>
+
+    <!-- Actions -->
+    <div class="header-actions">
+      <button class="notif-btn" title="الإشعارات" onclick="toggleNotif()">
+        🔔<span class="notif-dot"></span>
+      </button>
+      <button class="export-btn" onclick="exportDashboard()">
+        📥 تصدير Excel
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <!-- Date Tabs -->
+    <div class="date-tabs" role="tablist">
+      <button class="date-tab" onclick="setDateTab(this,'يومي')">يومي</button>
+      <button class="date-tab" onclick="setDateTab(this,'أسبوعي')">أسبوعي</button>
+      <button class="date-tab active" onclick="setDateTab(this,'شهري')">شهري</button>
+      <button class="date-tab" onclick="setDateTab(this,'سنوي')">سنوي</button>
+      <button class="date-tab" onclick="setDateTab(this,'ربع سنوي')">ربع سنوي</button>
+      <button class="date-tab" onclick="setDateTab(this,'مخصص')">مخصص</button>
+    </div>
+    <div class="custom-date" id="customDate">
+      <div class="custom-date-group">
+        <span class="custom-date-label">من تاريخ</span>
+        <input type="date" id="dateFrom" aria-label="من تاريخ" />
+      </div>
+      <span class="custom-date-sep">←</span>
+      <div class="custom-date-group">
+        <span class="custom-date-label">إلى تاريخ</span>
+        <input type="date" id="dateTo" aria-label="إلى تاريخ" />
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <span style="font-size:13px;color:var(--text3);">⚙️</span>
+
+    <select class="filter-select" id="comparisonFilter" aria-label="المقارنة الزمنية" onchange="applyFilters()">
+      <option value="previousPeriod">المقارنة (Compression): الفترة السابقة (Previous Period)</option>
+      <option value="samePeriodLastYear">المقارنة (Compression): نفس الفترة من العام الماضي (Same Period Last Year)</option>
+    </select>
+
+    <!-- Filters -->
+    <select class="filter-select" id="regionFilter" onchange="applyFilters()">
+      <option value="">جميع المناطق</option>
+    </select>
+
+    <select class="filter-select" id="cityFilter" onchange="applyFilters()"><option value="">جميع المدن</option></select>
+
+    <select class="filter-select" id="repFilter" onchange="applyFilters()">
+      <option value="">جميع المندوبين</option>
+    </select>
+
+    <select class="filter-select" id="customerFilter" onchange="applyFilters()"><option value="">جميع العملاء</option></select>
+    <select class="filter-select" id="monthFilter" onchange="applyFilters()"><option value="">كل الأشهر</option></select>
+    <select class="filter-select" id="yearFilter" onchange="applyFilters()"><option value="">كل السنوات</option></select>
+    <select class="filter-select" id="periodFilter" onchange="applyFilters()"><option value="">كل الفترات</option></select>
+    <select class="filter-select" id="dayFilter" onchange="applyFilters()"><option value="">كل الأيام</option></select>
+
+    <select class="filter-select" id="catFilter" onchange="applyFilters()"><option value="">جميع الفئات</option></select>
+    <select class="filter-select" id="productFilter" onchange="applyFilters()"><option value="">جميع المنتجات</option></select>
+
+    <div class="spacer"></div>
+
+    <!-- Toggle -->
+    <div class="toggle-wrap">
+      <span class="toggle-label active-val" id="toggleLabelVal">القيمة النقدية</span>
+      <button class="toggle-track" id="viewToggle" onclick="toggleView()">
+        <div class="toggle-thumb"></div>
+      </button>
+      <span class="toggle-label inactive-val" id="toggleLabelQty">الكميات</span>
+    </div>
+
+    <!-- Data source -->
+    <div class="source-control" aria-label="مصدر البيانات">
+      <span>المصدر</span>
+      <select id="dataSourceFilter" onchange="applyFilters()" aria-label="مصدر البيانات">
+        <option value="postedInvoice">Posted Invoice (الفاتورة المعتمدة)</option>
+        <option value="salesOrder">Sales Order (أمر المبيعات)</option>
+      </select>
+      <select id="salesOrderStatusFilter" onchange="applyFilters()" aria-label="حالة أمر المبيعات" hidden>
+        <option value="post">Post</option>
+        <option value="draft">Draft</option>
+        <option value="all">All (Post and Draft)</option>
+      </select>
+    </div>
+    <!-- Churn Badge -->
+    <div class="churn-badge">
+      <div class="churn-dot"></div>
+      <span class="churn-badge-text">0 تحذيرات إلغاء</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
+<main class="main" style="position:relative;z-index:1;">
+
+  <!-- ─── KPI CARDS ─── -->
+  <section aria-label="مؤشرات الأداء الرئيسية">
+    <div class="section-header">
+      <div class="section-bar" style="background:linear-gradient(to bottom,#3b82f6,#06b6d4);"></div>
+      <div>
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+          <h2 class="section-title">مؤشرات الأداء الرئيسية</h2>
+          <span class="section-sub" id="dashboardDate">15\09\2026</span>
+        </div>
+        <div class="section-sub" id="dashboardFilterSummary">كل المناطق | كل المندوبين | كل الفئات</div>
+      </div>
+    </div>
+    <div class="kpi-grid" id="kpiGrid">
+
+      <!-- Revenue -->
+      <div class="kpi-card blue">
+        <div class="kpi-bg"></div>
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-sub">الفواتير المعتمدة</div>
+            <div class="kpi-title">إجمالي الإيرادات المعتمدة</div>
+          </div>
+          <div class="kpi-icon">💰</div>
+        </div>
+        <div class="kpi-value">0 EGP</div>
+        <div class="kpi-full">0 EGP</div>
+        <div class="kpi-footer">
+          <div class="kpi-trend up">↑ +١٨.٧٪ <span style="font-weight:400;color:var(--text3);">مقارنة بالفترة السابقة</span></div>
+          <div class="kpi-extra">فواتير: <span>0</span></div>
+        </div>
+        <div class="kpi-deco"></div>
+      </div>
+
+      <!-- Collected -->
+      <div class="kpi-card green">
+        <div class="kpi-bg"></div>
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-sub">إجمالي التحصيل</div>
+            <div class="kpi-title">المبالغ المحصلة</div>
+          </div>
+          <div class="kpi-icon">💳</div>
+        </div>
+        <div class="kpi-value">0 EGP</div>
+        <div class="kpi-full">0 EGP</div>
+        <div class="kpi-footer">
+          <div class="kpi-trend up">↑ +٥.٢٪ <span style="font-weight:400;color:var(--text3);">معدل التحصيل</span></div>
+          <div class="kpi-extra">نسبة التحصيل: <span>0%</span></div>
+        </div>
+        <div class="kpi-deco"></div>
+      </div>
+
+      <!-- Outstanding -->
+      <div class="kpi-card red">
+        <div class="kpi-bg"></div>
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-sub">الرصيد المتأخر</div>
+            <div class="kpi-title">المديونية القائمة</div>
+          </div>
+          <div class="kpi-icon">⚠️</div>
+        </div>
+        <div class="kpi-value">0 EGP</div>
+        <div class="kpi-full">0 EGP</div>
+        <div class="kpi-alert">⚠️ يتجاوز الحد الائتماني — 0 عميل</div>
+        <div class="kpi-footer">
+          <div class="kpi-trend down">↑ +١٢.٣٪ <span style="font-weight:400;color:var(--text3);">زيادة في المديونية</span></div>
+          <div class="kpi-extra">عميل متعثر: <span>0</span></div>
+        </div>
+        <div class="kpi-deco"></div>
+      </div>
+
+      <!-- Avg Invoice -->
+      <div class="kpi-card purple">
+        <div class="kpi-bg"></div>
+        <div class="kpi-top">
+          <div>
+            <div class="kpi-sub">المتوسط الفاتوري</div>
+            <div class="kpi-title">متوسط قيمة الفاتورة</div>
+          </div>
+          <div class="kpi-icon">📊</div>
+        </div>
+        <div class="kpi-value">0 EGP</div>
+        <div class="kpi-full">0 EGP</div>
+        <div class="kpi-footer">
+          <div class="kpi-trend up">↑ +٦.٤٪ <span style="font-weight:400;color:var(--text3);">تحسن في المتوسط</span></div>
+          <div class="kpi-extra">عميل نشط: <span>0</span></div>
+        </div>
+        <div class="kpi-deco"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── ANALYTICS CHARTS ─── -->
+  <section aria-label="التحليلات والرسوم البيانية">
+    <div class="section-header">
+      <div class="section-bar" style="background:linear-gradient(to bottom,#f59e0b,#f97316);"></div>
+      <h2 class="section-title">التحليلات والرسوم البيانية</h2>
+    </div>
+    <div class="charts-grid">
+
+      <!-- Products Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-wrap">
+            <div class="chart-bar" style="background:linear-gradient(to bottom,#3b82f6,#06b6d4);"></div>
+            <div class="chart-title" id="prodChartTitle">أفضل المنتجات مبيعاً</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="tab-group">
+              <button class="tab-btn active-top" id="tabTop" onclick="switchProductChart('top',this)">↑ الأعلى</button>
+              <button class="tab-btn" id="tabBot" onclick="switchProductChart('bottom',this)">↓ الأدنى</button>
+            </div>
+            <button class="tbl-export-btn" onclick="exportProductChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap" style="height:220px;">
+          <canvas id="productChart"></canvas>
+        </div>
+        <div id="prodGrowthRow" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;"></div>
+        <div id="productDetailCard" class="chart-detail-card" hidden></div>
+      </div>
+
+      <!-- Growth vs Churn Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-wrap">
+            <div class="chart-bar" style="background:linear-gradient(to bottom,#22c55e,#ef4444);"></div>
+            <div class="chart-title">محرك النمو مقابل تحذيرات الإلغاء الخاص بالعملاء</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="churn-badge" style="margin-right:0;">
+              <div class="churn-dot"></div>
+              <span class="churn-badge-text">0 تحذيرات</span>
+            </div>
+            <button class="tbl-export-btn" onclick="exportGrowthChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap" style="height:200px;">
+          <canvas id="growthChart"></canvas>
+        </div>
+        <div style="margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px;">عملاء في خطر الإلغاء</div>
+          <div class="churn-list" id="churnList"></div>
+        </div>
+      </div>
+
+      <!-- Regional Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title-wrap">
+            <div class="chart-bar" style="background:linear-gradient(to bottom,#f59e0b,#f97316);"></div>
+            <div class="chart-title">التوزيع الجغرافي</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:11px;color:var(--text3);">📍 ٨ مناطق</span>
+            <button class="tbl-export-btn" onclick="exportGeoChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrap" style="height:200px;">
+          <canvas id="regionalChart"></canvas>
+        </div>
+        <div class="region-mini-grid" id="regionMiniGrid" style="margin-top:8px;"></div>
+        <div id="regionDetailCard" class="chart-detail-card" hidden></div>
+      </div>
+
+    </div>
+
+    <!-- Sales Rep Performance (full width) -->
+    <div style="margin-top:14px;" class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title-wrap">
+          <div class="chart-bar" style="background:linear-gradient(to bottom,#a855f7,#6366f1);"></div>
+          <div class="chart-title">أداء مندوبي المبيعات</div>
+        </div>
+        <span style="font-size:11px;color:var(--text3);">نسبة تحقيق الهدف الشهري</span>
+      </div>
+      <div class="rep-table-wrap">
+        <table class="rep-table" id="repList">
+          <thead>
+            <tr><th>اسم المندوب</th><th>مؤشر الأداء</th><th>القيمة</th><th>معادلة الحساب / الشرح</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <!-- Sales Rep Export added above repList -->
+  <section aria-label="مصفوفة المقارنة التحليلية">
+    <div style="padding:24px 0 0;">
+      <div class="brd-panel full" style="margin-bottom:16px;">
+        <div class="panel-kicker">ANALYTICAL COMPARISON REPORT &middot; PRODUCTS &amp; REGIONS</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div class="panel-title" style="margin-bottom:0;">تقرير المقارنة التحليلية للمنتجات والمناطق</div>
+          <button class="tbl-export-btn" onclick="exportComparisonMatrixToExcel()" title="تصدير إلى Excel">📥 تصدير Excel</button>
+        </div>
+        <div class="matrix-wrap"><table class="matrix" id="comparisonMatrix"><thead><tr><th>المستوى</th><th>القيمة الحالية</th><th>الكمية</th><th>الفترة السابقة</th><th>التغير</th><th>التحصيل</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── RETURNS ANALYTICAL TABLE ─── -->
+  <section aria-label="جدول التقرير التحليلي للمرتجعات">
+    <div class="section-header">
+      <div class="section-bar" style="background:linear-gradient(to bottom,#ef4444,#f97316);"></div>
+      <h2 class="section-title">جدول التقرير التحليلي للمرتجعات</h2>
+      <span class="section-sub">تحليل تفصيلي لحركات الإرجاع وإشعارات الخصم</span>
+    </div>
+    <div class="returns-table-card">
+      <div class="returns-toolbar">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:13px;font-weight:800;color:var(--text);">جدول التقرير التحليلي للمرتجعات</span>
+          <span class="table-hint">— إشعارات الخصم والكميات المرتجعة</span>
+        </div>
+        <button class="tbl-export-btn" onclick="exportReturnsToExcel()" title="تصدير إلى Excel">📥 تصدير Excel</button>
+      </div>
+      <div class="returns-table-wrap">
+        <table class="returns-table" id="returnsAnalyticsTable">
+          <thead><tr>
+            <th>اسم الأصناف والمنتجات</th>
+            <th>التصنيف</th>
+            <th>مسجل إرجاعه على النظام</th>
+            <th>مرجع إشعار الخصم</th>
+            <th>اسم المندوب</th>
+            <th>اسم المنطقة</th>
+            <th>الكمية المرتجعة</th>
+            <th>إجمالي المرتجع</th>
+          </tr></thead>
+          <tbody id="returnsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── DRILL-DOWN TABLE ─── -->
+  <section aria-label="تقرير المبيعات التفصيلي">
+    <div class="section-header">
+      <div class="section-bar" style="background:linear-gradient(to bottom,#06b6d4,#14b8a6);"></div>
+      <h2 class="section-title">تقرير المبيعات التفصيلي</h2>
+      <span class="section-sub">المحافظة → المدينة → العميل → المندوب</span>
+    </div>
+
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-left">
+          <div class="chart-bar" style="background:linear-gradient(to bottom,#06b6d4,#14b8a6);width:3px;height:18px;border-radius:2px;"></div>
+          <span style="font-size:13px;font-weight:800;color:var(--text);">الجدول التفصيلي</span>
+          <span class="table-hint">— انقر على الصف لتوسيعه</span>
+        </div>
+        <div class="table-toolbar-right">
+          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع"><option value="region" selected>المنطقة</option><option value="city">المدينة</option><option value="rep">المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
+          <button class="tbl-btn" onclick="toggleRepSort()">ترتيب المندوبين</button>
+          <button class="tbl-btn" onclick="expandAll()">توسيع الكل</button>
+          <button class="tbl-btn" onclick="collapseAll()">طي الكل</button>
+          <button class="tbl-export-btn" id="exportTable" onclick="exportDetailTableToExcel()">📥 تصدير Excel</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr id="drillTableHead">
+              <th>التسلسل الهرمي</th>
+              <th class="center" data-sort="invoices">عدد الفواتير</th>
+              <th class="center" data-sort="grossQty">إجمالي الكمية المباعة</th>
+              <th class="center" data-sort="returnedQty">الكمية المرتجعة</th>
+              <th class="center" data-sort="netQty">صافي الكمية المباعة</th>
+              <th class="left" data-sort="gross">إجمالي المبيعات</th>
+              <th class="left" data-sort="returns">المبالغ المرتجعة</th>
+              <th class="left" data-sort="net">صافي المبيعات</th>
+              <th class="left" data-sort="collected">المبالغ المحصلة</th>
+              <th class="left" data-sort="outstanding">المديونية القائمة</th>
+              <th class="center" data-sort="rate">نسبة التحصيل</th>
+            </tr>
+          </thead>
+          <tbody id="drillTableBody"></tbody>
+          <tfoot>
+            <tr>
+              <td style="color:#e2e8f0;">الإجمالي الكلي</td>
+              <td class="center val-normal">0</td>
+              <td class="center val-normal">0</td>
+              <td class="left val-blue">0 EGP</td>
+              <td class="left val-green">0 EGP</td>
+              <td class="left val-red">0 EGP</td>
+              <td class="center">
+                <div class="rate-wrap">
+                  <div class="rate-bar"><div class="rate-fill good" style="width:0%;"></div></div>
+                  <span class="rate-pct good">0%</span>
+                </div>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="table-legend">
+        <span style="font-size:10px;font-weight:700;color:var(--text3);">الرمز:</span>
+        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div> محافظة</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#06b6d4;"></div> مدينة</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div> عميل</div>
+        <div class="legend-item" style="margin-right:auto;">⚠️ نسبة تحصيل منخفضة (&lt;٧٠٪)</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    مصنع الشيخ للفوم — لوحة تحكم المبيعات © ٢٠٢٥ | جميع الأرقام بالجنيه المصري
+  </footer>
+</main>
+
+<!-- ═══════════════════════════ SCRIPTS ═══════════════════════════ -->
+<script type="text/legacy">
+/* The dashboard is driven by one transaction collection and one state object. */
+const dashboardState = {
+  filters: { region:'', city:'', rep:'', customer:'', category:'', product:'', month:'', year:'', period:'', day:'', query:'' },
+  dateMode:'شهري', comparison:'previousPeriod', groupBy:['region'], productMetric:'amount', repTarget:'monthly', repSort:'desc', sort:{ key:'net', dir:'desc' },
+  expanded:new Set(), charts:{ growth:null, regional:null, product:null }
+};
+
+const transactionSeed = [
+  ['2026-01-08','القاهرة الكبرى','مدينة نصر','أحمد محمد السيد','شركة النور للأثاث','الإسفنج','إسفنج طبي فاخر ١٠سم',420,18,36000,3600],
+  ['2026-01-19','القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','شركة الشروق للأثاث','المراتب','مرتبة بونيل ٢٠٠×١٨٠',260,12,29000,2900],
+  ['2026-02-11','الإسكندرية','المنتزه','محمود علي حسن','بيت الراحة للمفروشات','المراتب','مرتبة بونيل ٢٠٠×١٨٠',310,15,34500,2760],
+  ['2026-03-17','الدلتا الشرقية','المنصورة','سامي وليد فاروق','شركة النيل للمفروشات','الإسفنج','إسفنج عالي الكثافة ٨سم',380,21,31800,3180],
+  ['2026-04-06','القاهرة الكبرى','مصر الجديدة','حسين عادل منصور','مجمع الديار للفرش','الأرضيات','أرضية بازلت ٤مم',180,10,22500,1800],
+  ['2026-05-21','الدلتا الغربية','طنطا','هشام نبيل صلاح','مؤسسة الغربية التجارية','الأرضيات','أرضية PVC ٢مم',240,14,19800,1584],
+  ['2026-06-14','الصعيد الأعلى','أسيوط','خالد إبراهيم عمر','مصنع الأمل للمفروشات','مواد لاصقة','غراء قماش مطاطي',150,8,14600,730],
+  ['2026-07-09','القناة','الإسماعيلية','يوسف طارق رمضان','شركة القناة للتجارة','الإكسسوارات','وسادة قياسي',210,16,17200,860],
+  ['2026-08-23','الإسكندرية','وسط البلد','محمود علي حسن','مؤسسة الإسكندر التجارية','الإسفنج','إسفنج رقيق ٣سم',290,13,21400,1712],
+  ['2026-09-12','القاهرة الكبرى','مدينة نصر','أحمد محمد السيد','مؤسسة الهلال التجارية','الإسفنج','إسفنج طبي فاخر ١٠سم',340,17,30100,3010],
+  ['2026-10-18','الدلتا الشرقية','المنصورة','سامي وليد فاروق','مجمع الأثاث الحديث','المراتب','مرتبة ذاكرة شكل',230,11,27400,2740],
+  ['2026-11-04','الصعيد الأدنى','المنيا','عمر عبد الرحمن','متجر الصعيد للأثاث','المراتب','مرتبة بونيل ٢٠٠×١٨٠',190,9,21800,2180],
+  ['2026-12-15','القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','مصنع الأمل للمفروشات','الأرضيات','أرضية بازلت ٤مم',270,15,26500,2120],
+  ['2025-12-15','القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','مصنع الأمل للمفروشات','الأرضيات','أرضية بازلت ٤مم',220,12,21200,1696]
+].map((r, i) => ({ date:r[0], region:r[1], city:r[2], rep:r[3], customer:r[4], category:r[5], product:r[6], invoices:r[7], grossQty:r[8], gross:r[9], collected:r[10], returnedQty:Math.round(r[8] * .08), returns:Math.round(r[9] * .06), id:'tx-'+i }));
+
+const dashboardData = transactionSeed;
+const legacyMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const money = value => `${Math.round(value).toLocaleString('ar-EG')} ج.م`;
+const number = value => Math.round(value).toLocaleString('ar-EG');
+const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] || 0), 0);
+const metric = rows => ({ invoices:sum(rows,'invoices'), grossQty:sum(rows,'grossQty'), returnedQty:sum(rows,'returnedQty'), netQty:sum(rows,'grossQty')-sum(rows,'returnedQty'), gross:sum(rows,'gross'), returns:sum(rows,'returns'), net:sum(rows,'gross')-sum(rows,'returns'), collected:sum(rows,'collected') });
+const metricWithDebt = rows => { const m = metric(rows); m.outstanding = m.net - m.collected; m.rate = m.net ? m.collected / m.net * 100 : 0; return m; };
+
+function rowsForState() {
+  const f = dashboardState.filters;
+  return dashboardData.filter(row => (!f.region || row.region === f.region) && (!f.city || row.city === f.city) && (!f.rep || row.rep === f.rep) && (!f.customer || row.customer === f.customer) && (!f.category || row.category === f.category) && (!f.product || row.product === f.product) && (!f.month || new Date(row.date).getMonth()+1 === +f.month) && (!f.year || new Date(row.date).getFullYear() === +f.year) && (!f.period || (f.period[0] === 'Q' ? `Q${Math.floor(new Date(row.date).getMonth()/3)+1}` : new Date(row.date).getDay() === +f.period)) && (!f.day || new Date(row.date).getDate() === +f.day) && (!f.query || [row.region,row.city,row.rep,row.customer,row.category,row.product].join(' ').includes(f.query)));
+}
+
+function optionValues(rows, key) { return [...new Set(rows.map(row => row[key]))].sort(); }
+function fillSelect(id, values, allLabel) { const select = document.getElementById(id); if (!select) return; const current = select.value; select.innerHTML = `<option value="">${allLabel}</option>` + values.map(value => `<option value="${value}">${value}</option>`).join(''); if (values.includes(current)) select.value = current; }
+function syncFilters() {
+  const f = dashboardState.filters, rows = dashboardData.filter(row => (!f.region || row.region === f.region) && (!f.rep || row.rep === f.rep) && (!f.category || row.category === f.category));
+  fillSelect('cityFilter', optionValues(rows,'city'), 'جميع المدن'); fillSelect('customerFilter', optionValues(rows,'customer'), 'جميع العملاء'); fillSelect('productFilter', optionValues(rows,'product'), 'جميع المنتجات');
+  fillSelect('monthFilter', months.map((_, i) => i+1), 'كل الأشهر'); fillSelect('yearFilter', [...new Set(dashboardData.map(row => new Date(row.date).getFullYear()))], 'كل السنوات');
+  fillSelect('periodFilter', f.year || f.month ? ['Q1','Q2','Q3','Q4','0','1','2','3','4','5','6'] : [], 'كل الفترات'); fillSelect('dayFilter', optionValues(rows,'date').map(date => new Date(date).getDate()), 'كل الأيام');
+  Object.keys(f).forEach(key => { const el = document.getElementById(key === 'category' ? 'catFilter' : key === 'query' ? 'globalSearch' : key === 'period' ? 'periodFilter' : key+'Filter'); if (el && el.value !== f[key]) el.value = f[key]; });
+}
+
+function renderKpis() {
+  const m = metricWithDebt(rowsForState()), cards = [['إجمالي المبيعات','الإيرادات المعتمدة',m.gross,'💰'],['إجمالي المرتجعات','إشعارات الخصم',m.returns,'↩'],['صافي المبيعات','الإيرادات',m.net,'◈'],['المبالغ المحصلة','إجمالي التحصيل',m.collected,'💳'],['المديونية القائمة','الرصيد المتأخر',m.outstanding,'⚠'],['عدد الفواتير المعتمدة','فواتير Posted',m.invoices,'▤'],['عدد المرتجعات','أوامر الإرجاع',Math.max(1,Math.ceil(m.invoices*.06)),'↩'],['متوسط قيمة الفاتورة','المتوسط الفاتوري',m.invoices ? m.net/m.invoices : 0,'📊']];
+  document.getElementById('kpiGrid').innerHTML = cards.map((c,i) => { const isCount=i===5||i===6; return `<div class="kpi-card ${i===1||i===4?'red':i===3?'green':'blue'}"><div class="kpi-top"><div><div class="kpi-sub">${c[1]}</div><div class="kpi-title">${c[0]}</div></div><div class="kpi-icon">${c[3]}</div></div><div class="kpi-value">${isCount?number(c[2]):money(c[2])}</div><div class="kpi-full">${isCount?number(c[2])+' سجل':number(c[2])+' جنيه مصري'}</div><div class="kpi-footer"><div class="kpi-trend ${i===4?'down':'up'}">↑ ${m.net ? (m.rate).toFixed(1) : '0'}٪ <span style="font-weight:400;color:var(--text3);">من الفترة الحالية</span></div><div class="kpi-extra">ديناميكي</div></div></div>`; }).join('');
+}
+const topProds = [
+  { name:'إسفنج طبي فاخر ١٠سم', cat:'الإسفنج',   rev:2345, growth:22.5 },
+  { name:'مرتبة بونيل ٢٠٠×١٨٠',  cat:'المراتب',   rev:1987, growth:18.3 },
+  { name:'أرضية بازلت ٤مم',       cat:'الأرضيات',  rev:1456, growth:15.7 },
+  { name:'إسفنج عالي الكثافة ٨سم', cat:'الإسفنج', rev:1234, growth:11.2 },
+  { name:'مرتبة ذاكرة شكل',       cat:'المراتب',   rev:1098, growth:28.6 },
+];
+const botProds = [
+  { name:'غراء قماش مطاطي',      cat:'مواد لاصقة', rev:189, growth:-12.3 },
+  { name:'إسفنج رقيق ٣سم',       cat:'الإسفنج',    rev:213, growth:-8.7  },
+  { name:'أرضية PVC ٢مم',        cat:'الأرضيات',   rev:267, growth:-5.2  },
+  { name:'وسادة قياسي',          cat:'المراتب',    rev:312, growth:-3.8  },
+  { name:'غراء الخشب السريع',    cat:'مواد لاصقة', rev:345, growth:-1.4  },
+];
+const months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const revenue  = [1.89,2.10,1.98,2.35,2.58,2.23,1.95,2.78,2.65,2.89,3.10,3.35];
+const collected= [1.51,1.68,1.58,1.88,2.06,1.78,1.56,2.22,2.12,2.31,2.48,2.68];
+const regions = [
+  { name:'القاهرة',   rev:4.568, col:3.654, out:0.914 },
+  { name:'الإسكندرية',rev:2.346, col:1.877, out:0.469 },
+  { name:'الدلتا الشرقية', rev:1.877, col:1.501, out:0.375 },
+  { name:'الدلتا الغربية', rev:1.654, col:1.323, out:0.331 },
+  { name:'الصعيد الأعلى',  rev:0.988, col:0.790, out:0.198 },
+  { name:'الصعيد الأدنى',  rev:0.877, col:0.701, out:0.175 },
+  { name:'القناة',    rev:0.654, col:0.524, out:0.131 },
+  { name:'سيناء',     rev:0.432, col:0.346, out:0.086 },
+];
+const churnData = [
+  { name:'مؤسسة الصعيد للأثاث', date:'منذ ٤٥ يوماً', risk:'high',   riskAr:'عالي'  },
+  { name:'متجر الأفق للديكور',   date:'منذ ٣٨ يوماً', risk:'high',   riskAr:'عالي'  },
+  { name:'شركة التميز للأثاث',   date:'منذ ٣٢ يوماً', risk:'medium', riskAr:'متوسط' },
+  { name:'مجمع النخبة للمفروشات',date:'منذ ٢٩ يوماً', risk:'medium', riskAr:'متوسط' },
+  { name:'بيت التصميم الحديث',   date:'منذ ٢٦ يوماً', risk:'low',    riskAr:'منخفض' },
+];
+const salesReps = [
+  { name:'سامي وليد فاروق', region:'الدلتا الشرقية', pct:121, kpi:'متفوق', target:980000, actualAmount:1185800, theoreticalAmount:1160000, actualPercentage:121, theoreticalPercentage:118, gapTheoreticalPercentage:3, gapPercentage:21 },
+  { name:'أحمد محمد السيد', region:'القاهرة الكبرى', pct:112, kpi:'متفوق', target:1100000, actualAmount:1232000, theoreticalAmount:1200000, actualPercentage:112, theoreticalPercentage:109, gapTheoreticalPercentage:3, gapPercentage:12 },
+  { name:'حسين عادل منصور', region:'القاهرة الجديدة', pct:109, kpi:'متفوق', target:870000, actualAmount:948300, theoreticalAmount:925000, actualPercentage:109, theoreticalPercentage:106, gapTheoreticalPercentage:3, gapPercentage:9 },
+  { name:'عمر عبد الرحمن', region:'الصعيد الأدنى', pct:104, kpi:'محقق للهدف', target:760000, actualAmount:790400, theoreticalAmount:775000, actualPercentage:104, theoreticalPercentage:102, gapTheoreticalPercentage:2, gapPercentage:4 },
+  { name:'محمود علي حسن', region:'الإسكندرية', pct:98, kpi:'قريب من الهدف', target:920000, actualAmount:901600, theoreticalAmount:910000, actualPercentage:98, theoreticalPercentage:99, gapTheoreticalPercentage:-1, gapPercentage:-2 },
+  { name:'كريم سعيد الشافعي', region:'الجيزة', pct:95, kpi:'قريب من الهدف', target:818000, actualAmount:777100, theoreticalAmount:800000, actualPercentage:95, theoreticalPercentage:98, gapTheoreticalPercentage:-3, gapPercentage:-5 },
+  { name:'هشام نبيل صلاح', region:'الدلتا الغربية', pct:93, kpi:'دون الهدف', target:740000, actualAmount:688200, theoreticalAmount:720000, actualPercentage:93, theoreticalPercentage:97, gapTheoreticalPercentage:-4, gapPercentage:-7 },
+  { name:'خالد إبراهيم عمر', region:'الصعيد الأعلى', pct:87, kpi:'دون الهدف', target:690000, actualAmount:600300, theoreticalAmount:660000, actualPercentage:87, theoreticalPercentage:96, gapTheoreticalPercentage:-9, gapPercentage:-13 },
+  { name:'أيمن رفعت ناصر', region:'الصحراء الغربية', pct:82, kpi:'دون الهدف', target:620000, actualAmount:508400, theoreticalAmount:590000, actualPercentage:82, theoreticalPercentage:95, gapTheoreticalPercentage:-13, gapPercentage:-18 },
+  { name:'يوسف طارق رمضان', region:'القناة', pct:76, kpi:'يحتاج متابعة', target:580000, actualAmount:440800, theoreticalAmount:540000, actualPercentage:76, theoreticalPercentage:93, gapTheoreticalPercentage:-17, gapPercentage:-24 },
+  { name:'طارق حمدي الزيات', region:'المنيا وأسيوط', pct:73, kpi:'يحتاج متابعة', target:540000, actualAmount:394200, theoreticalAmount:510000, actualPercentage:73, theoreticalPercentage:94, gapTheoreticalPercentage:-21, gapPercentage:-27 },
+  { name:'مصطفى جمال الدين', region:'سيناء والبحر الأحمر', pct:68, kpi:'يحتاج تدخل', target:500000, actualAmount:340000, theoreticalAmount:475000, actualPercentage:68, theoreticalPercentage:95, gapTheoreticalPercentage:-27, gapPercentage:-32 },
+];
+
+// ────────────────────────────────────────────────────────────
+// CHART.JS GLOBAL DEFAULTS
+// ────────────────────────────────────────────────────────────
+Chart.defaults.font.family = "'Cairo', sans-serif";
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.plugins.legend.labels.boxWidth = 10;
+Chart.defaults.plugins.legend.labels.padding  = 12;
+
+// ────────────────────────────────────────────────────────────
+// PRODUCTS CHART
+// ────────────────────────────────────────────────────────────
+let prodChart, prodMode = 'top';
+
+function buildProductChart(mode) {
+  const data = mode === 'top' ? topProds : botProds;
+  const bgColors = mode === 'top'
+    ? data.map((_,i) => `hsl(${210+i*12},75%,${62-i*4}%)`)
+    : data.map((_,i) => `hsl(${0+i*10},70%,${55-i*3}%)`);
+
+  const ctx = document.getElementById('productChart').getContext('2d');
+  if (prodChart) prodChart.destroy();
+  prodChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(p => p.name.length > 16 ? p.name.slice(0,16)+'…' : p.name),
+      datasets: [{ data: data.map(p => p.rev), backgroundColor: bgColors, borderRadius: 6, maxBarThickness: 22 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.raw.toLocaleString('ar-EG')} ألف ج.م`
+        }
+      }},
+      scales: {
+        x: { grid: { color:'rgba(51,65,85,0.4)' }, ticks: { callback: v => v+'ك' } },
+        y: { grid: { display: false }, ticks: { mirror: true, padding: 4 } }
+      }
+    }
+  });
+
+  // Growth row
+  const row = document.getElementById('prodGrowthRow');
+  row.innerHTML = data.map(p => `
+    <div style="text-align:center;flex:1;min-width:0;">
+      <div style="font-size:11px;font-weight:800;color:${p.growth>=0?'#4ade80':'#f87171'};">
+        ${p.growth>=0?'+':''}${p.growth}%
+      </div>
+      <div style="font-size:9px;color:var(--text3);margin-top:2px;">${p.cat}</div>
+    </div>
+  `).join('');
+}
+
+function switchProductChart(mode, btn) {
+  prodMode = mode;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active-top','active-bot');
+  });
+  btn.classList.add(mode === 'top' ? 'active-top' : 'active-bot');
+  document.getElementById('prodChartTitle').textContent =
+    mode === 'top' ? 'أفضل المنتجات مبيعاً' : 'أقل المنتجات مبيعاً';
+  buildProductChart(mode);
+}
+
+// ────────────────────────────────────────────────────────────
+// GROWTH / CHURN CHART
+// ────────────────────────────────────────────────────────────
+function buildGrowthChart() {
+  const ctx = document.getElementById('growthChart').getContext('2d');
+  const gradRev = ctx.createLinearGradient(0,0,0,200);
+  gradRev.addColorStop(0,'rgba(59,130,246,0.35)');
+  gradRev.addColorStop(1,'rgba(59,130,246,0.01)');
+  const gradCol = ctx.createLinearGradient(0,0,0,200);
+  gradCol.addColorStop(0,'rgba(34,197,94,0.35)');
+  gradCol.addColorStop(1,'rgba(34,197,94,0.01)');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label:'الإيرادات', data: revenue,   borderColor:'#3b82f6', backgroundColor: gradRev,
+          fill:true, tension:.4, pointRadius:3, pointBackgroundColor:'#3b82f6', pointHoverRadius:5 },
+        { label:'المحصّل',   data: collected, borderColor:'#22c55e', backgroundColor: gradCol,
+          fill:true, tension:.4, pointRadius:3, pointBackgroundColor:'#22c55e', pointHoverRadius:5 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position:'bottom' }, tooltip: {
+        callbacks: { label: ctx => ` ${ctx.raw} مليون ج.م` }
+      }},
+      scales: {
+        x: { grid: { color:'rgba(51,65,85,0.4)' } },
+        y: { grid: { color:'rgba(51,65,85,0.4)' }, ticks: { callback: v => v+'م' } }
+      }
+    }
+  });
+
+  // Churn List
+  const list = document.getElementById('churnList');
+  list.innerHTML = churnData.map(c => `
+    <div class="churn-item ${c.risk}">
+      <div class="churn-item-left">
+        <div class="churn-item-dot"></div>
+        <span class="churn-item-name">${c.name}</span>
+      </div>
+      <div class="churn-item-right">
+        <span class="churn-item-date">${c.date}</span>
+        <span class="churn-risk">${c.riskAr}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ────────────────────────────────────────────────────────────
+// REGIONAL CHART
+// ────────────────────────────────────────────────────────────
+function buildRegionalChart() {
+  const ctx = document.getElementById('regionalChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: regions.map(r => r.name),
+      datasets: [
+        { label:'الإيرادات', data: regions.map(r=>r.rev), backgroundColor:'rgba(59,130,246,0.75)', borderRadius:4, maxBarThickness:22 },
+        { label:'المحصّل',   data: regions.map(r=>r.col), backgroundColor:'rgba(34,197,94,0.75)',  borderRadius:4, maxBarThickness:22 },
+        { label:'المديونية', data: regions.map(r=>r.out), backgroundColor:'rgba(239,68,68,0.75)',  borderRadius:4, maxBarThickness:22 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend: { position:'bottom' }, tooltip: {
+        callbacks: { label: ctx => ` ${ctx.raw} مليون ج.م` }
+      }},
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:9}} },
+        y: { grid:{ color:'rgba(51,65,85,0.4)' }, ticks:{ callback: v => v+'م' } }
+      }
+    }
+  });
+
+  // Mini cards (top 4)
+  const grid = document.getElementById('regionMiniGrid');
+  grid.innerHTML = regions.slice(0,4).map(r => {
+    const rate = Math.round(r.col/r.rev*100);
+    const good = rate>=80;
+    return `
+      <div class="region-mini">
+        <div>
+          <div class="region-mini-name">${r.name}</div>
+          <div class="region-mini-val">${r.rev.toFixed(2)} م.ج</div>
+        </div>
+        <div class="region-mini-rate ${good?'good':'bad'}">${rate}%</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ────────────────────────────────────────────────────────────
+// SALES REP PERFORMANCE
+// ────────────────────────────────────────────────────────────
+function buildRepList() {
+  const sorted = [...salesReps].sort((a,b) => b.pct - a.pct);
+  const list = document.querySelector('#repList tbody');
+  list.innerHTML = sorted.map((r,i) => {
+    const cls = r.pct>=100 ? 'over' : r.pct>=80 ? 'ok' : 'low';
+    return `
+      <tr class="rep-main-row" data-rep-id="${i}" onclick="toggleRepRow('${i}')">
+        <td><span class="rep-toggle">▼</span><span class="rep-rank">#${i+1}</span> <span class="rep-name">${r.name}</span><div class="rep-region">${r.region}</div></td>
+        <td><span class="rep-bar-track"><span class="rep-bar-fill ${cls}" style="display:block;width:${Math.min(r.pct,100)}%;"></span></span><span class="rep-pct ${cls}">${r.pct}%</span></td>
+        <td class="rep-value">${money(r.actualAmount)}</td>
+        <td class="rep-explanation">اضغط لعرض تفاصيل الأداء</td>
+      </tr>
+      <tr class="rep-detail-row" data-rep-detail="${i}">
+        <td colspan="4"><div class="rep-detail-panel">
+          <div class="rep-detail-card kpi"><span class="rep-detail-label">مؤشر الأداء</span><span class="rep-detail-value">${r.kpi}</span></div>
+          <div class="rep-detail-card target"><span class="rep-detail-label">الهدف</span><span class="rep-detail-value">${money(r.target)}</span></div>
+          <div class="rep-detail-card"><span class="rep-detail-label">المبلغ الفعلي المنجز</span><span class="rep-detail-value">${money(r.actualAmount)}</span></div>
+          <div class="rep-detail-card"><span class="rep-detail-label">المبلغ المحصل</span><span class="rep-detail-value">${money(r.collectedAmount || r.actualAmount - (r.actualAmount * 0.2))}</span></div>
+          <div class="rep-detail-card gap"><span class="rep-detail-label">الباقي</span><span class="rep-detail-value">${money((r.actualAmount || 0) - (r.collectedAmount || r.actualAmount * 0.8))}</span></div>
+          <div class="rep-detail-card"><span class="rep-detail-label">النسبة الفعلية</span><span class="rep-detail-value">${r.actualPercentage}%</span></div>
+          <div class="rep-detail-card"><span class="rep-detail-label">النسبة النظرية</span><span class="rep-detail-value">${r.theoreticalPercentage}%</span></div>
+          <div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة النظرية</span><span class="rep-detail-value">${r.gapTheoreticalPercentage >= 0 ? '+' : ''}${r.gapTheoreticalPercentage}%</span></div>
+          <div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة الفعلية</span><span class="rep-detail-value">${r.gapPercentage >= 0 ? '+' : ''}${r.gapPercentage}%</span></div>
+        </div></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ────────────────────────────────────────────────────────────
+// DRILL-DOWN TABLE DATA
+// ────────────────────────────────────────────────────────────
+const tableData = [
+  { id:'cairo', level:'state', icon:'🏙️', name:'القاهرة الكبرى', invoices:1248, qty:48200, value:'٤٬٥٦٧٬٨٩٠', collected:'٣٬٦٥٤٬٣١٢', outstanding:'٩١٣٬٥٧٨', rate:80,
+    children: [
+      { id:'cairo-nasr', level:'city', icon:'📍', name:'مدينة نصر', invoices:423, qty:16800, value:'١٬٥٦٧٬٨٩٠', collected:'١٬٢٥٤٬٣١٢', outstanding:'٣١٣٬٥٧٨', rate:80,
+        children: [
+          { id:'cn-c1', level:'cust', icon:'🏢', name:'شركة النور للأثاث',      rep:'أحمد محمد السيد',   invoices:87, qty:3400, value:'٤٢٣٬٠٠٠', collected:'٣٣٨٬٤٠٠', outstanding:'٨٤٬٦٠٠', rate:80 },
+          { id:'cn-c2', level:'cust', icon:'🏢', name:'مؤسسة الهلال التجارية', rep:'حسين عادل منصور',   invoices:65, qty:2600, value:'٣١٢٬٠٠٠', collected:'٢٤٩٬٦٠٠', outstanding:'٦٢٬٤٠٠', rate:80 },
+          { id:'cn-c3', level:'cust', icon:'🏢', name:'متجر الأثاث الملكي',    rep:'أحمد محمد السيد',   invoices:54, qty:2100, value:'٢٦٧٬٠٠٠', collected:'١٦٠٬٢٠٠', outstanding:'١٠٦٬٨٠٠', rate:60, warn:true },
+        ]
+      },
+      { id:'cairo-helio', level:'city', icon:'📍', name:'مصر الجديدة', invoices:312, qty:12400, value:'١٬١٢٣٬٠٠٠', collected:'٨٩٨٬٤٠٠', outstanding:'٢٢٤٬٦٠٠', rate:80,
+        children: [
+          { id:'ch-c1', level:'cust', icon:'🏢', name:'مجمع الديار للفرش',    rep:'حسين عادل منصور',  invoices:98, qty:3900, value:'٤٦٧٬٠٠٠', collected:'٣٧٣٬٦٠٠', outstanding:'٩٣٬٤٠٠', rate:80 },
+          { id:'ch-c2', level:'cust', icon:'🏢', name:'بيت الراحة للمراتب',   rep:'كريم سعيد الشافعي', invoices:72, qty:2800, value:'٣٣٤٬٠٠٠', collected:'٢٦٧٬٢٠٠', outstanding:'٦٦٬٨٠٠', rate:80 },
+        ]
+      },
+      { id:'cairo-giza', level:'city', icon:'📍', name:'الجيزة', invoices:513, qty:19000, value:'١٬٨٧٧٬٠٠٠', collected:'١٬٥٠١٬٦٠٠', outstanding:'٣٧٥٬٤٠٠', rate:80,
+        children: [
+          { id:'cg-c1', level:'cust', icon:'🏢', name:'شركة الشروق للأثاث',  rep:'كريم سعيد الشافعي', invoices:143, qty:5600, value:'٦٧٨٬٠٠٠', collected:'٥٤٢٬٤٠٠', outstanding:'١٣٥٬٦٠٠', rate:80 },
+          { id:'cg-c2', level:'cust', icon:'🏢', name:'مصنع الأمل للمفروشات',rep:'كريم سعيد الشافعي', invoices:98,  qty:3800, value:'٤٥٦٬٠٠٠', collected:'٣٦٤٬٨٠٠', outstanding:'٩١٬٢٠٠',  rate:80 },
+        ]
+      },
+    ]
+  },
+  { id:'alex', level:'state', icon:'🏛️', name:'الإسكندرية', invoices:687, qty:24600, value:'٢٬٣٤٥٬٦٧٨', collected:'١٬٨٧٦٬٥٤٣', outstanding:'٤٦٩٬١٣٥', rate:80,
+    children: [
+      { id:'alex-mont', level:'city', icon:'📍', name:'المنتزه', invoices:234, qty:8400, value:'٧٩٨٬٠٠٠', collected:'٦٣٨٬٤٠٠', outstanding:'١٥٩٬٦٠٠', rate:80,
+        children: [
+          { id:'am-c1', level:'cust', icon:'🏢', name:'بيت الراحة للمفروشات', rep:'محمود علي حسن', invoices:87, qty:3100, value:'٣٥٦٬٠٠٠', collected:'٢٨٤٬٨٠٠', outstanding:'٧١٬٢٠٠', rate:80 },
+          { id:'am-c2', level:'cust', icon:'🏢', name:'معرض الأفق للأثاث',    rep:'محمود علي حسن', invoices:67, qty:2400, value:'٢٣٤٬٠٠٠', collected:'١٨٧٬٢٠٠', outstanding:'٤٦٬٨٠٠', rate:80 },
+        ]
+      },
+      { id:'alex-dt', level:'city', icon:'📍', name:'وسط البلد', invoices:453, qty:16200, value:'١٬٥٤٧٬٦٧٨', collected:'١٬٢٣٨٬١٤٣', outstanding:'٣٠٩٬٥٣٥', rate:80,
+        children: [
+          { id:'adt-c1', level:'cust', icon:'🏢', name:'مؤسسة الإسكندر التجارية', rep:'محمود علي حسن', invoices:123, qty:4400, value:'٤٥٦٬٠٠٠', collected:'٣٦٤٬٨٠٠', outstanding:'٩١٬٢٠٠', rate:80 },
+        ]
+      },
+    ]
+  },
+  { id:'delta', level:'state', icon:'🌾', name:'الدلتا الشرقية', invoices:534, qty:19800, value:'١٬٨٧٦٬٥٤٣', collected:'١٬٥٠١٬٢٣٤', outstanding:'٣٧٥٬٣٠٩', rate:80,
+    children: [
+      { id:'delta-mans', level:'city', icon:'📍', name:'المنصورة', invoices:267, qty:9900, value:'٩٤٥٬٠٠٠', collected:'٧٥٦٬٠٠٠', outstanding:'١٨٩٬٠٠٠', rate:80,
+        children: [
+          { id:'dm-c1', level:'cust', icon:'🏢', name:'شركة النيل للمفروشات', rep:'سامي وليد فاروق', invoices:98, qty:3600, value:'٤٣٢٬٠٠٠', collected:'٣٤٥٬٦٠٠', outstanding:'٨٦٬٤٠٠', rate:80 },
+          { id:'dm-c2', level:'cust', icon:'🏢', name:'مجمع الأثاث الحديث',   rep:'سامي وليد فاروق', invoices:76, qty:2800, value:'٣١٢٬٠٠٠', collected:'٢٤٩٬٦٠٠', outstanding:'٦٢٬٤٠٠', rate:80 },
+        ]
+      },
+    ]
+  },
+  { id:'upper', level:'state', icon:'🗿', name:'الصعيد الأعلى', invoices:312, qty:10400, value:'٩٨٧٬٦٥٤', collected:'٧٩٠٬١٢٣', outstanding:'١٩٧٬٥٣١', rate:80,
+    children: [
+      { id:'upper-ass', level:'city', icon:'📍', name:'أسيوط', invoices:156, qty:5200, value:'٤٩٨٬٠٠٠', collected:'٣٩٨٬٤٠٠', outstanding:'٩٩٬٦٠٠', rate:80,
+        children: [
+          { id:'ua-c1', level:'cust', icon:'🏢', name:'مؤسسة الصعيد للأثاث', rep:'طارق حمدي الزيات', invoices:78, qty:2600, value:'٢٦٧٬٠٠٠', collected:'١٣٣٬٥٠٠', outstanding:'١٣٣٬٥٠٠', rate:50, warn:true },
+        ]
+      },
+      { id:'upper-luxor', level:'city', icon:'📍', name:'الأقصر', invoices:156, qty:5200, value:'٤٨٩٬٦٥٤', collected:'٣٩١٬٧٢٣', outstanding:'٩٧٬٩٣١', rate:80,
+        children: [
+          { id:'ul-c1', level:'cust', icon:'🏢', name:'معرض ريم للمفروشات', rep:'طارق حمدي الزيات', invoices:54, qty:1800, value:'٢٣٤٬٠٠٠', collected:'١٨٧٬٢٠٠', outstanding:'٤٦٬٨٠٠', rate:80 },
+        ]
+      },
+    ]
+  },
+  { id:'canal', level:'state', icon:'⛵', name:'القناة', invoices:198, qty:6900, value:'٦٥٤٬٣٢١', collected:'٥٢٣٬٤٥٧', outstanding:'١٣٠٬٨٦٤', rate:80,
+    children: [
+      { id:'canal-ism', level:'city', icon:'📍', name:'الإسماعيلية', invoices:98, qty:3400, value:'٣٤٥٬٠٠٠', collected:'٢٣٩٬٠٠٠', outstanding:'١٠٦٬٠٠٠', rate:69, warn:true,
+        children: [
+          { id:'ci-c1', level:'cust', icon:'🏢', name:'شركة القناة للتجارة', rep:'يوسف طارق رمضان', invoices:56, qty:1900, value:'٢٣٤٬٠٠٠', collected:'١٥٠٬٠٠٠', outstanding:'٨٤٬٠٠٠', rate:64, warn:true },
+        ]
+      },
+    ]
+  },
+];
+
+// ────────────────────────────────────────────────────────────
+// DRILL-DOWN TABLE RENDERING
+// ────────────────────────────────────────────────────────────
+let expandedIds = new Set();
+
+function rateClass(r) { return r>=80?'good':r>=70?'ok':'bad'; }
+
+function renderRow(item, depth) {
+  const indent = depth * 22;
+  const hasChildren = item.children && item.children.length > 0;
+  const isExpanded = expandedIds.has(item.id);
+  const expandIcon = !hasChildren ? '<div class="row-expand leaf">▶</div>'
+    : isExpanded ? '<div class="row-expand expanded" onclick="toggleRow(\''+item.id+'\',event)">▼</div>'
+    :              '<div class="row-expand expandable" onclick="toggleRow(\''+item.id+'\',event)">▶</div>';
+
+  const rc = rateClass(item.rate);
+  const warnIcon = item.warn ? '<span class="rate-alert" title="نسبة منخفضة">⚠️</span>' : '';
+
+  let rows = `<tr class="level-${item.level}" data-id="${item.id}">
+    <td>
+      <div class="row-indent" style="padding-right:${indent}px;">
+        ${expandIcon}
+        <span class="row-icon">${item.icon}</span>
+        <div>
+          <div class="row-name ${item.level}">${item.name}</div>
+          ${item.rep ? `<div class="row-subrep">👤 ${item.rep}</div>` : ''}
+        </div>
+      </div>
+    </td>
+    <td class="center val-normal">${item.invoices.toLocaleString('ar-EG')}</td>
+    <td class="center val-normal">${item.qty.toLocaleString('ar-EG')}</td>
+    <td class="left val-blue">${item.value} ج.م</td>
+    <td class="left val-green">${item.collected} ج.م</td>
+    <td class="left">${warnIcon}<span class="${item.warn?'val-red':'val-warn'}">${item.outstanding} ج.م</span></td>
+    <td class="center">
+      <div class="rate-wrap">
+        <div class="rate-bar"><div class="rate-fill ${rc}" style="width:${item.rate}%;"></div></div>
+        <span class="rate-pct ${rc}">${item.rate}٪</span>
+      </div>
+    </td>
+  </tr>`;
+
+  if (isExpanded && hasChildren) {
+    item.children.forEach(child => { rows += renderRow(child, depth+1); });
+  }
+  return rows;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('drillTableBody');
+  tbody.innerHTML = tableData.map(row => renderRow(row, 0)).join('');
+}
+
+function toggleRow(id, e) {
+  e.stopPropagation();
+  if (expandedIds.has(id)) expandedIds.delete(id);
+  else expandedIds.add(id);
+  renderTable();
+}
+
+function expandAll() {
+  function collect(items) {
+    items.forEach(item => {
+      if (item.children) { expandedIds.add(item.id); collect(item.children); }
+    });
+  }
+  collect(tableData);
+  renderTable();
+}
+
+function collapseAll() { expandedIds.clear(); renderTable(); }
+
+// ────────────────────────────────────────────────────────────
+// HEADER INTERACTIONS
+// ────────────────────────────────────────────────────────────
+function setDateTab(btn, name) {
+  document.querySelectorAll('.date-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('customDate').style.display = name === 'مخصص' ? 'flex' : 'none';
+}
+
+let viewIsQty = false;
+function toggleView() {
+  viewIsQty = !viewIsQty;
+  const track = document.getElementById('viewToggle');
+  const lv = document.getElementById('toggleLabelVal');
+  const lq = document.getElementById('toggleLabelQty');
+  track.classList.toggle('qty', viewIsQty);
+  lv.classList.toggle('active-val', !viewIsQty);
+  lv.classList.toggle('inactive-val', viewIsQty);
+  lq.classList.toggle('active-val', viewIsQty);
+  lq.classList.toggle('inactive-val', !viewIsQty);
+}
+
+function applyFilters() {
+  const region = document.getElementById('regionFilter').value;
+  const rep    = document.getElementById('repFilter').value;
+  const cat    = document.getElementById('catFilter').value;
+  const product = document.getElementById('productFilter').value;
+  const query = document.getElementById('globalSearch').value.trim();
+  document.querySelectorAll('#drillTableBody tr').forEach(row => {
+    const visible = !query || row.textContent.includes(query);
+    row.style.display = visible ? '' : 'none';
+  });
+  document.querySelector('.section-sub').textContent = `${region} | ${rep} | ${cat} | ${product}`;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8' }));
+  link.download = filename; link.click(); URL.revokeObjectURL(link.href);
+}
+
+function exportTableCsv() {
+  const rows = [['الاسم','عدد الفواتير','الكمية','القيمة','المحصّل','المديونية','نسبة التحصيل']];
+  document.querySelectorAll('#drillTableBody tr:not([style*="display: none"])').forEach(row => rows.push([...row.cells].map(cell => cell.textContent.trim())));
+  downloadCsv('foam-sales-table.csv', rows);
+}
+
+function exportDashboard() {
+  downloadCsv('foam-sales-dashboard.csv', [['التقرير','القيمة'],['الإيرادات المعتمدة','١٢٬٣٤٥٬٦٧٨ ج.م'],['المحصّل','٩٬٨٧٦٬٥٤٣ ج.م'],['المديونية','٢٬٤٦٩٬١٣٥ ج.م'],['المرتجعات وإشعارات الخصم','١٨٧٬٤٥٠ ج.م']]);
+}
+
+function toggleNotif() {
+  alert('تحذيرات الإلغاء:\n\n⛔ مؤسسة الصعيد للأثاث — لم تطلب منذ ٤٥ يوماً\n⛔ متجر الأفق — لم يطلب منذ ٣٨ يوماً\n⚠️ شركة التميز — لم تطلب منذ ٣٢ يوماً');
+}
+
+// ────────────────────────────────────────────────────────────
+// CENTRAL RENDER PIPELINE
+// ────────────────────────────────────────────────────────────
+function setDateTab(button, mode) { dashboardState.dateMode = mode; document.querySelectorAll('.date-tab').forEach(tab => tab.classList.remove('active')); button.classList.add('active'); document.getElementById('customDate').style.display = mode === 'مخصص' ? 'flex' : 'none'; renderDashboard(); }
+function applyFilters() { const map = { region:'regionFilter', city:'cityFilter', rep:'repFilter', customer:'customerFilter', category:'catFilter', product:'productFilter', month:'monthFilter', year:'yearFilter', period:'periodFilter', day:'dayFilter' }; Object.entries(map).forEach(([key,id]) => { const el=document.getElementById(id); if (el) dashboardState.filters[key]=el.value; }); dashboardState.filters.query=document.getElementById('globalSearch').value.trim(); syncFilters(); renderDashboard(); }
+function toggleView() { document.getElementById('viewToggle').classList.toggle('qty'); dashboardState.productMetric = dashboardState.productMetric === 'amount' ? 'quantity' : 'amount'; renderProductReport(); }
+function groupedRows(rows) { const groups = new Map(); rows.forEach(row => { const key = dashboardState.groupBy.map(group => row[group]).join(' / '); if (!groups.has(key)) groups.set(key, { id:key, name:key, level:'state', icon:'◆', children:[] }); groups.get(key).children.push(row); }); return [...groups.values()]; }
+function tableCells(m) { return `<td class="center">${number(m.invoices)}</td><td class="center">${number(m.grossQty)}</td><td class="center">${number(m.returnedQty)}</td><td class="center">${number(m.netQty)}</td><td class="left val-blue">${money(m.gross)}</td><td class="left val-red">${money(m.returns)}</td><td class="left val-blue">${money(m.net)}</td><td class="left val-green">${money(m.collected)}</td><td class="left val-warn">${money(m.outstanding)}</td><td class="center">${m.rate.toFixed(1)}٪</td>`; }
+function renderTable() { const body=document.getElementById('drillTableBody'), rows=rowsForState(); const direction=dashboardState.sort.dir==='desc'?1:-1; const groups=groupedRows(rows).sort((a,b) => direction*((metricWithDebt(b.children)[dashboardState.sort.key]||0)-(metricWithDebt(a.children)[dashboardState.sort.key]||0))); body.innerHTML=groups.map(group => { const m=metricWithDebt(group.children), open=dashboardState.expanded.has(group.id); const children=open ? group.children.map(row => `<tr><td><span style="padding-right:28px;">└ ${row.customer} / ${row.product}</span></td>${tableCells(metricWithDebt([row]))}</tr>`).join('') : ''; return `<tr class="level-state" data-id="${group.id}" onclick="toggleRow('${group.id}',event)"><td><span class="row-expand ${open?'expanded':''}">${open?'▼':'▶'}</span> ${group.name}</td>${tableCells(m)}</tr>${children}`; }).join(''); const total=metricWithDebt(rows); const foot=document.querySelector('#drillTableBody').parentElement.querySelector('tfoot tr'); if (foot) foot.innerHTML=`<td>الإجمالي الكلي</td>${tableCells(total)}`; }
+function toggleRow(id,event) { if (event) event.stopPropagation(); dashboardState.expanded.has(id) ? dashboardState.expanded.delete(id) : dashboardState.expanded.add(id); renderTable(); }
+function expandAll() { groupedRows(rowsForState()).forEach(row => dashboardState.expanded.add(row.id)); renderTable(); }
+function collapseAll() { dashboardState.expanded.clear(); renderTable(); }
+function renderProductReport() { const rows=rowsForState(), grouped=new Map(); rows.forEach(row => { const key=dashboardState.groupBy.includes('category') && !dashboardState.groupBy.includes('product') ? row.category : row.product; const old=grouped.get(key)||{name:key,amount:0,quantity:0}; old.amount+=row.gross-row.returns; old.quantity+=row.grossQty-row.returnedQty; grouped.set(key,old); }); const items=[...grouped.values()].sort((a,b)=>b[dashboardState.productMetric==='amount'?'amount':'quantity']-a[dashboardState.productMetric==='amount'?'amount':'quantity']); buildProductChart = function() {}; if (dashboardState.charts.product) dashboardState.charts.product.destroy(); dashboardState.charts.product=new Chart(document.getElementById('productChart'),{type:'bar',data:{labels:items.slice(0,5).map(x=>x.name),datasets:[{data:items.slice(0,5).map(x=>x[dashboardState.productMetric==='amount'?'amount':'quantity']),backgroundColor:'#d6aa5b',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}}); const total=sum(items,dashboardState.productMetric==='amount'?'amount':'quantity')||1; document.getElementById('prodGrowthRow').innerHTML=items.slice(0,5).map(x=>`<div style="flex:1;text-align:center;color:var(--text3);font-size:10px;">${x.name}<br><strong style="color:var(--ks-kinpaku);">${(x[dashboardState.productMetric==='amount'?'amount':'quantity']/total*100).toFixed(1)}٪</strong></div>`).join(''); }
+function renderGrowthChart() { const rows=rowsForState(), labels=dashboardState.dateMode==='ربع سنوي'?['Q1','Q2','Q3','Q4']:dashboardState.dateMode==='يومي'?[...new Set(rows.map(r=>r.date.slice(8)))]:months; const values=labels.map(label=>metric(rows.filter(r=>dashboardState.dateMode==='ربع سنوي'?`Q${Math.floor(new Date(r.date).getMonth()/3)+1}`===label:dashboardState.dateMode==='يومي'?r.date.slice(8)===label:months[new Date(r.date).getMonth()]===label)).net); if(dashboardState.charts.growth) dashboardState.charts.growth.destroy(); dashboardState.charts.growth=new Chart(document.getElementById('growthChart'),{type:'line',data:{labels,datasets:[{label:'صافي المبيعات',data:values,borderColor:'#d6aa5b',backgroundColor:'rgba(214,170,91,.16)',fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false}}); }
+function renderRegionalChart() { const rows=rowsForState(), names=optionValues(rows,'region'), values=names.map(name=>metric(rows.filter(r=>r.region===name)).net); if(dashboardState.charts.regional) dashboardState.charts.regional.destroy(); dashboardState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:names,datasets:[{label:'صافي المبيعات',data:values,backgroundColor:'#70aaa2'}]},options:{responsive:true,maintainAspectRatio:false}}); document.getElementById('regionMiniGrid').innerHTML=names.slice(0,4).map((name,i)=>`<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${values[i].toLocaleString('ar-EG')}</div></div>`).join(''); }
+function renderRepReport() { const rows=rowsForState(), reps=optionValues(rows,'rep').map(name=>({name,metric:metricWithDebt(rows.filter(r=>r.rep===name)),region:rows.find(r=>r.rep===name)?.region||'كل المناطق'})).sort((a,b)=>dashboardState.repSort==='desc'?b.metric.net-a.metric.net:a.metric.net-b.metric.net); document.querySelector('#repList tbody').innerHTML=reps.map((r,i)=>`<tr><td><span class="rep-rank">#${i+1}</span> <span class="rep-name">${r.name}</span><div class="rep-region">${r.region}</div></td><td><span class="rep-bar-track"><span class="rep-bar-fill ok" style="display:block;width:${Math.min(r.metric.rate,100)}%;"></span></span><span class="rep-pct ok">${r.metric.rate.toFixed(1)}٪</span></td><td class="rep-value">${money(r.metric.net)}</td><td class="rep-explanation">صافي المبيعات ${money(r.metric.net)} ÷ عدد الفواتير ${number(r.metric.invoices)} = ${money(r.metric.invoices ? r.metric.net/r.metric.invoices : 0)} متوسط الفاتورة</td></tr>`).join(''); }
+function renderDashboard() { syncFilters(); renderKpis(); renderTable(); renderProductReport(); renderGrowthChart(); renderRegionalChart(); renderRepReport(); const sub=document.querySelector('.section-sub'); if(sub) sub.textContent=`${dashboardState.filters.region||'كل المناطق'} | ${dashboardState.filters.rep||'كل المندوبين'} | ${dashboardState.filters.category||'كل الفئات'}`; }
+function toggleRepSort() { dashboardState.repSort=dashboardState.repSort==='desc'?'asc':'desc'; renderRepReport(); }
+function setComparison(mode, button) { dashboardState.comparison=mode; document.querySelectorAll('#momTab,#yoyTab').forEach(tab=>tab.classList.remove('active-top')); if(button) button.classList.add('active-top'); renderDecisionReports(); }
+document.addEventListener('DOMContentLoaded', () => { document.getElementById('globalSearch').addEventListener('input',applyFilters); ['region','city','rep','customer','category','product','month','year','period','day'].forEach(key=>{const id=key==='category'?'catFilter':key+'Filter'; document.getElementById(id).addEventListener('change',applyFilters);}); document.getElementById('groupByFilter').addEventListener('change', event=>{dashboardState.groupBy=[...event.target.selectedOptions].map(option=>option.value); renderDashboard();}); document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const key=th.dataset.sort; dashboardState.sort.dir=dashboardState.sort.key===key&&dashboardState.sort.dir==='desc'?'asc':'desc'; dashboardState.sort.key=key; renderTable();})); renderDashboard(); });
+
+</script>
+<script type="text/legacy">
+/* BRD presentation data layer: deterministic records keep every visual tied to one ledger. */
+(function () {
+  const brdMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const brdProducts = [
+    ['الإسفنج','إسفنج طبي فاخر ١٠سم',920], ['الإسفنج','إسفنج عالي الكثافة ٨سم',760], ['الإسفنج','إسفنج رقيق ٣سم',420],
+    ['المراتب','مرتبة بونيل ٢٠٠×١٨٠',1180], ['المراتب','مرتبة ذاكرة شكل Sleep/Nile',1320], ['المراتب','مراتب Diora',1080],
+    ['الأرضيات','أرضية بازلت ٤مم',680], ['الأرضيات','أرضية PVC ٢مم',510],
+    ['مواد لاصقة','غراء قماش مطاطي',360], ['الإكسسوارات','وسائد قياسية',300]
+  ];
+  const brdTeams = [
+    ['القاهرة الكبرى','مدينة نصر','أحمد محمد السيد','شركة النور للأثاث'], ['القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','مصنع الأمل للمفروشات'],
+    ['الإسكندرية','المنتزه','محمود علي حسن','بيت الراحة للمفروشات'], ['الدلتا الشرقية','المنصورة','سامي وليد فاروق','شركة النيل للمفروشات'],
+    ['الدلتا الغربية','طنطا','هشام نبيل صلاح','مؤسسة الغربية التجارية'], ['الصعيد الأعلى','أسيوط','خالد إبراهيم عمر','مؤسسة الصعيد للأثاث'],
+    ['الصعيد الأدنى','المنيا','عمر عبد الرحمن','متجر الصعيد للأثاث'], ['القناة','الإسماعيلية','يوسف طارق رمضان','شركة القناة للتجارة'],
+    ['القاهرة الكبرى','مصر الجديدة','حسين عادل منصور','مجمع الديار للفرش'], ['الدلتا الشرقية','الزقازيق','أيمن رفعت ناصر','مجمع الأثاث الحديث'],
+    ['الصعيد الأعلى','الأقصر','طارق حمدي الزيات','معرض ريم للمفروشات'], ['القناة','بورسعيد','مصطفى جمال الدين','شركة القناة المتحدة']
+  ];
+  const brdLedger = [];
+  brdTeams.forEach((team, teamIndex) => {
+    for (let month = 0; month < 12; month += 1) {
+      const product = brdProducts[(teamIndex * 2 + month) % brdProducts.length];
+      const units = 34 + ((teamIndex * 7 + month * 5) % 38);
+      const unitPrice = product[2] + ((month * 125) % 600);
+      const gross = units * unitPrice;
+      const returnedQty = (teamIndex + month) % 5 === 0 ? Math.max(1, Math.round(units * .07)) : Math.max(1, Math.round(units * .025));
+      const returns = Math.round(returnedQty * unitPrice);
+      const collected = Math.round((gross - returns) * (.68 + ((teamIndex + month) % 5) * .055));
+      brdLedger.push({
+        id:`brd-${teamIndex}-${month}`, date:`2026-${String(month + 1).padStart(2,'0')}-${String(6 + ((teamIndex * 3 + month) % 20)).padStart(2,'0')}`,
+        region:team[0], city:team[1], rep:team[2], customer:`${team[3]} ${month % 3 === 0 ? 'للتوريدات' : 'للمفروشات'}`,
+        category:product[0], product:product[1], invoices:5 + ((teamIndex + month) % 7), grossQty:units, gross, collected,
+        returnedQty, returns, returnOrders:returnedQty > 2 ? 1 : 0, target:Math.round(gross * (1.04 + (teamIndex % 4) * .04))
+      });
+    }
+  });
+  brdLedger.push({ id:'brd-prior-year', date:'2025-12-12', region:'القاهرة الكبرى', city:'الجيزة', rep:'كريم سعيد الشافعي', customer:'مصنع الأمل للمفروشات', category:'الأرضيات', product:'أرضية بازلت ٤مم', invoices:9, grossQty:58, gross:138000, collected:104000, returnedQty:3, returns:7200, returnOrders:1, target:142000 });
+
+  const brdState = { filters:{region:'',city:'',rep:'',customer:'',category:'',product:'',month:'',year:'',period:'',day:'',query:'',from:'',to:''}, mode:'شهري', metric:'amount', comparison:'previousPeriod', source:'postedInvoice', salesOrderStatus:'post', sortKey:'net', sortDirection:'desc', expanded:new Set(), repExpanded:new Set(), groupKeys:['region'], charts:{} };
+  const brdMoney = value => `${Math.round(value || 0).toLocaleString('ar-EG')} ج.م`;
+  const brdNum = value => Math.round(value || 0).toLocaleString('ar-EG');
+  const brdSum = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+  const brdMetric = rows => { const gross=brdSum(rows,'gross'), returns=brdSum(rows,'returns'), net=gross-returns, collected=brdSum(rows,'collected'); return { invoices:brdSum(rows,'invoices'), grossQty:brdSum(rows,'grossQty'), returnedQty:brdSum(rows,'returnedQty'), netQty:brdSum(rows,'grossQty')-brdSum(rows,'returnedQty'), gross, returns, net, collected, outstanding:net-collected, rate:net ? collected/net*100 : 0, returnOrders:brdSum(rows,'returnOrders') }; };
+  const brdDistinct = (rows, key) => [...new Set(rows.map(row => row[key]))].sort((a,b) => String(a).localeCompare(String(b),'ar'));
+  const brdPeriod = row => { const date=new Date(`${row.date}T00:00:00`); return `Q${Math.floor(date.getMonth()/3)+1}`; };
+  const brdSourceRows = () => {
+    if (brdState.source !== 'salesOrder' || brdState.salesOrderStatus === 'all') return brdLedger;
+    return brdLedger.filter((row, index) => (index % 2 === 0) === (brdState.salesOrderStatus === 'post'));
+  };
+  const brdDateText = () => {
+    const f=brdState.filters, now=new Date(), day=Number(f.day)||now.getDate(), month=Number(f.month)||now.getMonth()+1, year=Number(f.year)||now.getFullYear();
+    return `${String(day).padStart(2,'0')}\\${String(month).padStart(2,'0')}\\${year}`;
+  };
+
+  function brdFiltered() {
+    const f=brdState.filters, sourceRows=brdSourceRows();
+    const rows=sourceRows.filter(row => { const date=new Date(`${row.date}T00:00:00`); const text=[row.region,row.city,row.rep,row.customer,row.category,row.product].join(' '); return (!f.region||row.region===f.region)&&(!f.city||row.city===f.city)&&(!f.rep||row.rep===f.rep)&&(!f.customer||row.customer===f.customer)&&(!f.category||row.category===f.category)&&(!f.product||row.product===f.product)&&(!f.month||date.getMonth()+1===Number(f.month))&&(!f.year||date.getFullYear()===Number(f.year))&&(!f.period||brdPeriod(row)===f.period)&&(!f.day||date.getDate()===Number(f.day))&&(!f.from||row.date>=f.from)&&(!f.to||row.date<=f.to)&&(!f.query||text.includes(f.query)); });
+    return rows.length ? rows : sourceRows;
+  }
+  function brdFill(id, values, label) { const el=document.getElementById(id); if(!el)return; const current=el.value; el.innerHTML=`<option value="">${label}</option>`+values.map(value=>`<option value="${value}">${value}</option>`).join(''); if(values.includes(current))el.value=current; }
+  function brdSyncOptions() {
+    const f=brdState.filters, available=brdSourceRows().filter(row=>(!f.region||row.region===f.region)&&(!f.rep||row.rep===f.rep)&&(!f.category||row.category===f.category));
+    brdFill('cityFilter',brdDistinct(available,'city'),'جميع المدن'); brdFill('customerFilter',brdDistinct(available,'customer'),'جميع العملاء'); brdFill('productFilter',brdDistinct(available,'product'),'جميع المنتجات');
+    brdFill('monthFilter',brdMonths.map((_,i)=>i+1),'كل الأشهر'); brdFill('yearFilter',[2026,2025],'كل السنوات'); brdFill('periodFilter',f.year||f.month?['Q1','Q2','Q3','Q4']:[],'كل الفترات'); brdFill('dayFilter',brdDistinct(available,'date').map(value=>Number(value.slice(8))),'كل الأيام');
+    const ids={region:'regionFilter',city:'cityFilter',rep:'repFilter',customer:'customerFilter',category:'catFilter',product:'productFilter',month:'monthFilter',year:'yearFilter',period:'periodFilter',day:'dayFilter'};
+    Object.entries(ids).forEach(([key,id])=>{const el=document.getElementById(id);if(el)el.value=f[key];});
+  }
+  function brdDestroy(id) { const canvas=document.getElementById(id); if(canvas){const existing=Chart.getChart(canvas);if(existing)existing.destroy();} }
+  function brdCurrentRows(rows) {
+    const f=brdState.filters, years=rows.map(row=>Number(row.date.slice(0,4)));
+    if(!years.length)return [];
+    const year=Number(f.year)||Math.max(...years);
+    let current=rows.filter(row=>Number(row.date.slice(0,4))===year);
+    if(f.from||f.to)return current.filter(row=>(!f.from||row.date>=f.from)&&(!f.to||row.date<=f.to));
+    if(f.month)current=current.filter(row=>Number(row.date.slice(5,7))===Number(f.month));
+    else if(brdState.mode==='شهري'){
+      const month=Math.max(...current.map(row=>Number(row.date.slice(5,7))));
+      current=current.filter(row=>Number(row.date.slice(5,7))===month);
+    } else if(brdState.mode==='أسبوعي'){
+      const weekOf=row=>Math.floor((new Date(`${row.date}T00:00:00`)-new Date(`${year}-01-01T00:00:00`))/86400000/7)+1;
+      const latest=Math.max(...current.map(weekOf));
+      current=current.filter(row=>weekOf(row)===latest);
+    }
+    if(f.period)current=current.filter(row=>brdPeriod(row)===f.period);
+    else if(brdState.mode==='ربع سنوي'){
+      const quarter=Math.max(...current.map(row=>Number(brdPeriod(row).slice(1))));
+      current=current.filter(row=>brdPeriod(row)===`Q${quarter}`);
+    }
+    if(f.day)current=current.filter(row=>Number(row.date.slice(8,10))===Number(f.day));
+    else if(brdState.mode==='يومي'){
+      const latest=Math.max(...current.map(row=>new Date(`${row.date}T00:00:00`).getTime()));
+      current=current.filter(row=>new Date(`${row.date}T00:00:00`).getTime()===latest);
+    }
+    return current.length?current:rows;
+  }
+  function brdStaticRows() { const f=brdState.filters, textFilter=f.query; return brdSourceRows().filter(row=>{const text=[row.region,row.city,row.rep,row.customer,row.category,row.product].join(' ');return (!f.region||row.region===f.region)&&(!f.city||row.city===f.city)&&(!f.rep||row.rep===f.rep)&&(!f.customer||row.customer===f.customer)&&(!f.category||row.category===f.category)&&(!f.product||row.product===f.product)&&(!textFilter||text.includes(textFilter));}); }
+  function brdComparisonRows(rows) { const current=brdCurrentRows(rows),dates=current.map(row=>new Date(`${row.date}T00:00:00`).getTime()); if(!dates.length)return []; const start=new Date(Math.min(...dates)),end=new Date(Math.max(...dates)); const priorStart=new Date(start),priorEnd=new Date(end); if(brdState.comparison==='samePeriodLastYear'){priorStart.setFullYear(priorStart.getFullYear()-1);priorEnd.setFullYear(priorEnd.getFullYear()-1);}else{const span=end-start+86400000;priorStart.setTime(start.getTime()-span);priorEnd.setTime(start.getTime()-86400000);} return brdStaticRows().filter(row=>{const time=new Date(`${row.date}T00:00:00`).getTime();return time>=priorStart.getTime()&&time<=priorEnd.getTime();}); }
+  function brdComparisonLabel() { return brdState.comparison==='samePeriodLastYear'?'نفس الفترة من العام الماضي':'الفترة السابقة'; }
+  function brdDelta(current,prior) { return prior ? (current-prior)/prior*100 : 0; }
+  function brdKpis() { const filtered=brdFiltered(),rows=brdCurrentRows(filtered),m=brdMetric(rows),prior=brdMetric(brdComparisonRows(filtered)),values=[m.gross,m.returns,m.net,m.collected,m.outstanding,m.invoices,m.returnOrders,m.invoices?m.net/m.invoices:0],keys=['gross','returns','net','collected','outstanding','invoices','returnOrders','net'],deltas=keys.map(key=>brdDelta(m[key],prior[key])),label=brdComparisonLabel(); document.getElementById('kpiGrid').innerHTML=[['إجمالي المبيعات','الإيرادات المعتمدة','💰'],['إجمالي المرتجعات','إشعارات الخصم','↩'],['صافي المبيعات','الإيرادات','◈'],['المبالغ المحصلة','إجمالي التحصيل','💳'],['المديونية القائمة','الرصيد المتأخر','⚠'],['عدد الفواتير المعتمدة','فواتير Posted','▤'],['عدد المرتجعات','أوامر الإرجاع','↩'],['متوسط قيمة الفاتورة','المتوسط الفاتوري','📊']].map((card,index)=>{const count=index===5||index===6,delta=deltas[index],trendClass=index===4?(delta<=0?'up':'down'):(delta>=0?'up':'down');return `<div class="kpi-card ${index===1||index===4?'red':index===3?'green':'blue'}"><div class="kpi-top"><div><div class="kpi-sub">${card[1]}</div><div class="kpi-title">${card[0]}</div></div><div class="kpi-icon">${card[2]}</div></div><div class="kpi-value">${count?brdNum(values[index]):brdMoney(values[index])}</div><div class="kpi-full">${count?brdNum(values[index])+' سجل':brdMoney(values[index])}</div><div class="kpi-footer"><div class="kpi-trend ${trendClass}">${delta>=0?'+':''}${delta.toFixed(1)}٪ <span style="font-weight:400;color:var(--text3);">${label}</span></div><div class="kpi-extra">بيانات حية</div></div></div>`;}).join(''); }
+  function brdPreviousPeriodRows() {
+    const f=brdState.filters, source=brdStaticRows(); let start,end;
+    const year=Number(f.year)||Math.max(...source.map(row=>Number(row.date.slice(0,4))));
+    if(f.from||f.to){ const current=brdCurrentRows(brdFiltered()); const dates=current.map(row=>new Date(`${row.date}T00:00:00`)); if(!dates.length)return []; end=new Date(Math.min(...dates)-86400000); start=new Date(end-(Math.max(...dates)-Math.min(...dates))); }
+    else if(f.month){ start=new Date(year,Number(f.month)-2,1); end=new Date(year,Number(f.month)-1,0); }
+    else if(f.period){ const quarter=Number(f.period.slice(1)), priorQuarter=quarter===1?4:quarter-1, priorYear=quarter===1?year-1:year; start=new Date(priorYear,(priorQuarter-1)*3,1); end=new Date(priorYear,priorQuarter*3,0); }
+    else if(f.day){ start=new Date(year,Number(f.month||1)-1,Number(f.day)-1); end=new Date(start); }
+    else { start=new Date(year-1,0,1); end=new Date(year-1,11,31); }
+    return source.filter(row=>{const date=new Date(`${row.date}T00:00:00`);return date>=start&&date<=end;});
+  }
+  function brdTableCells(m) { return `<td class="center">${brdNum(m.invoices)}</td><td class="center">${brdNum(m.grossQty)}</td><td class="center">${brdNum(m.returnedQty)}</td><td class="center">${brdNum(m.netQty)}</td><td class="left val-blue">${brdMoney(m.gross)}</td><td class="left val-red">${brdMoney(m.returns)}</td><td class="left val-blue">${brdMoney(m.net)}</td><td class="left val-green">${brdMoney(m.collected)}</td><td class="left val-warn">${brdMoney(m.outstanding)}</td><td class="center">${m.rate.toFixed(1)}٪</td>`; }
+  function brdTable() {
+    const rows=brdCurrentRows(brdFiltered()), priorRows=brdPreviousPeriodRows(), keys=brdState.groupKeys.length?brdState.groupKeys:['region'], direction=brdState.sortDirection==='desc'?-1:1;
+    const groupRows=(items,key)=>{const groups=new Map();items.forEach(row=>{const value=row[key];if(!groups.has(value))groups.set(value,[]);groups.get(value).push(row);});return [...groups.entries()].sort((a,b)=>direction*((brdMetric(a[1])[brdState.sortKey]||0)-(brdMetric(b[1])[brdState.sortKey]||0)));};
+    const renderLevel=(items,prior,level,path=[])=>groupRows(items,keys[level]).map(([name,group])=>{const groupPath=[...path,name],id=groupPath.join('\u001f'),open=brdState.expanded.has(id),priorGroup=prior.filter(row=>groupPath.every((value,index)=>row[keys[index]]===value)),children=level<keys.length-1&&open?renderLevel(group,priorGroup,level+1,groupPath):'',m=brdMetric(group);return `<tr class="level-state" onclick='brdToggle(${JSON.stringify(id)})'><td><span class="row-expand ${open?'expanded':''}">${level<keys.length-1?(open?'▼':'▶'):''}</span> ${name}</td>${brdTableCells(m,brdMetric(priorGroup).net)}</tr>${children}`;}).join('');
+    document.getElementById('drillTableBody').innerHTML=renderLevel(rows,priorRows,0);
+    const foot=document.querySelector('#drillTableBody').parentElement.querySelector('tfoot tr');if(foot)foot.innerHTML=`<td>الإجمالي الكلي</td>${brdTableCells(brdMetric(rows),brdMetric(priorRows).net)}`;
+  }
+  function brdProductsChart() { const rows=brdFiltered(), groups=new Map();rows.forEach(row=>{const key=row.product;const old=groups.get(key)||{name:key,category:row.category,amount:0,quantity:0};old.amount+=row.gross-row.returns;old.quantity+=row.grossQty-row.returnedQty;groups.set(key,old);});let items=[...groups.values()].sort((a,b)=>b[brdState.metric==='amount'?'amount':'quantity']-a[brdState.metric==='amount'?'amount':'quantity']);if(window.brdProductMode==='bottom')items=items.reverse();const visible=items.slice(0,7);window._lastProductChartData=visible.map(item=>({product:item.name,category:item.category,amount:item.amount,quantity:item.quantity}));brdDestroy('productChart');brdState.charts.product=new Chart(document.getElementById('productChart'),{type:'bar',data:{labels:visible.map(item=>item.name),datasets:[{data:visible.map(item=>item[brdState.metric==='amount'?'amount':'quantity']),backgroundColor:'#d6aa5b',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},onClick:(event,elements)=>{if(!elements.length)return;const item=visible[elements[0].index];const card=document.getElementById('productDetailCard');card.hidden=false;card.innerHTML=`<div class="chart-detail-title">${item.name}</div><div><div class="chart-detail-label">الكمية</div><div class="chart-detail-value">${brdNum(item.quantity)}</div></div><div><div class="chart-detail-label">القيمة (بالجنيه)</div><div class="chart-detail-value">${brdMoney(item.amount)}</div></div><div><div class="chart-detail-label">الفئة</div><div class="chart-detail-value">${item.category}</div></div>`;}}});const total=items.reduce((sum,item)=>sum+item.amount,0)||1;document.getElementById('prodGrowthRow').innerHTML=visible.map(item=>`<div style="flex:1;text-align:center;color:var(--text3);font-size:10px;">${item.name}<br><strong style="color:var(--ks-kinpaku);">${(item.amount/total*100).toFixed(1)}٪</strong></div>`).join(''); }
+  function brdGrowthChart() {
+    const filtered=brdFiltered(), dateOf=row=>new Date(`${row.date}T00:00:00`), selectedYear=Number(brdState.filters.year)||Math.max(...filtered.map(row=>dateOf(row).getFullYear())), rows=brdState.mode==='سنوي'?filtered:filtered.filter(row=>dateOf(row).getFullYear()===selectedYear);
+    const weekOfYear=row=>{const date=dateOf(row),first=new Date(date.getFullYear(),0,1);return Math.floor((date-first)/86400000/7)+1;};
+    let labels,bucket;
+    if(brdState.mode==='يومي'||brdState.mode==='مخصص'){ labels=[...new Set(rows.map(row=>row.date))].sort(); bucket=row=>row.date; }
+    else if(brdState.mode==='أسبوعي'){ const weeks=[...new Set(rows.filter(row=>dateOf(row).getFullYear()===selectedYear).map(weekOfYear))].sort((a,b)=>a-b); labels=weeks.map(week=>`الأسبوع ${week}`); bucket=row=>`الأسبوع ${weekOfYear(row)}`; }
+    else if(brdState.mode==='ربع سنوي'){ labels=['Q1','Q2','Q3','Q4']; bucket=brdPeriod; }
+    else if(brdState.mode==='سنوي'){ labels=[...new Set(rows.map(row=>row.date.slice(0,4)))].sort(); bucket=row=>row.date.slice(0,4); }
+    else { labels=brdMonths; bucket=row=>brdMonths[dateOf(row).getMonth()]; }
+    const values=labels.map(label=>brdMetric(rows.filter(row=>bucket(row)===label)).net), collected=labels.map(label=>brdMetric(rows.filter(row=>bucket(row)===label)).collected); window._lastGrowthChartData=labels.map((label,index)=>({period:label,netSales:values[index],collected:collected[index]}));
+    brdDestroy('growthChart');brdState.charts.growth=new Chart(document.getElementById('growthChart'),{type:'line',data:{labels,datasets:[{label:'صافي المبيعات',data:values,borderColor:'#d6aa5b',backgroundColor:'rgba(214,170,91,.16)',fill:true,tension:.35},{label:'المحصّل',data:collected,borderColor:'#70aaa2',backgroundColor:'rgba(112,170,162,.12)',fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+  }
+  function brdGeoChart() { const rows=brdFiltered(),regions=brdDistinct(rows,'region'),metrics=regions.map(name=>brdMetric(rows.filter(row=>row.region===name)));window._lastGeoChartData=regions.map((name,index)=>({region:name,netSales:metrics[index].net,collected:metrics[index].collected,outstanding:metrics[index].outstanding}));brdDestroy('regionalChart');brdState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:regions,datasets:[{label:'صافي المبيعات',data:metrics.map(m=>m.net),backgroundColor:'#70aaa2'},{label:'المحصّلات',data:metrics.map(m=>m.collected),backgroundColor:'#d6aa5b'},{label:'المديونية القائمة',data:metrics.map(m=>m.outstanding),backgroundColor:'#b86b5c'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},onClick:(event,elements)=>{if(!elements.length)return;const index=elements[0].index,m=metrics[index],card=document.getElementById('regionDetailCard');card.hidden=false;card.innerHTML=`<div class="chart-detail-title">${regions[index]}</div><div><div class="chart-detail-label">المحصلات</div><div class="chart-detail-value">${brdMoney(m.collected)}</div></div><div><div class="chart-detail-label">المديونية القائمة</div><div class="chart-detail-value">${brdMoney(m.outstanding)}</div></div><div><div class="chart-detail-label">صافي المبيعات</div><div class="chart-detail-value">${brdMoney(m.net)}</div></div>`;}}});document.getElementById('regionMiniGrid').innerHTML=regions.slice(0,4).map((name,index)=>{const m=metrics[index];return `<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${brdMoney(m.net)}</div></div>`;}).join(''); }
+  function brdReps() { const rows=brdFiltered(), names=salesReps.map(rep=>({rep,rows:rows.filter(row=>row.rep===rep.name)})).sort((a,b)=>b.rep.actualPercentage-a.rep.actualPercentage);document.querySelector('#repList tbody').innerHTML=names.map((entry,index)=>{const rep=entry.rep,open=brdState.repExpanded.has(rep.name),cls=rep.actualPercentage>=100?'over':rep.actualPercentage>=80?'ok':'low';return `<tr class="rep-main-row ${open?'is-expanded':''}" data-rep-id="${rep.name}" onclick="toggleRepRow('${rep.name.replaceAll("'","\\'")}')"><td><span class="rep-toggle">▼</span><span class="rep-rank">#${index+1}</span> <span class="rep-name">${rep.name}</span><div class="rep-region">${rep.region}</div></td><td><span class="rep-bar-track"><span class="rep-bar-fill ${cls}" style="display:block;width:${Math.min(rep.actualPercentage,100)}%;"></span></span><span class="rep-pct ${cls}">${rep.actualPercentage}%</span></td><td class="rep-value">${brdMoney(rep.actualAmount)}</td><td class="rep-explanation">اضغط لعرض تفاصيل الأداء</td></tr><tr class="rep-detail-row ${open?'is-expanded':''}" data-rep-detail="${rep.name}"><td colspan="4"><div class="rep-detail-panel"><div class="rep-detail-card kpi"><span class="rep-detail-label">مؤشر الأداء</span><span class="rep-detail-value">${rep.kpi}</span></div><div class="rep-detail-card target"><span class="rep-detail-label">الهدف</span><span class="rep-detail-value">${brdMoney(rep.target)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">المبلغ الفعلي المنجز</span><span class="rep-detail-value">${brdMoney(rep.actualAmount)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">المبلغ النظري</span><span class="rep-detail-value">${brdMoney(rep.theoreticalAmount)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">النسبة الفعلية</span><span class="rep-detail-value">${rep.actualPercentage}%</span></div><div class="rep-detail-card"><span class="rep-detail-label">النسبة النظرية</span><span class="rep-detail-value">${rep.theoreticalPercentage}%</span></div><div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة النظرية</span><span class="rep-detail-value">${rep.gapTheoreticalPercentage>=0?'+':''}${rep.gapTheoreticalPercentage}%</span></div><div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة الفعلية</span><span class="rep-detail-value">${rep.gapPercentage>=0?'+':''}${rep.gapPercentage}%</span></div></div></td></tr>`;}).join(''); }
+  function brdReports() { const filtered=brdFiltered(),rows=brdCurrentRows(filtered),m=brdMetric(rows),prior=brdMetric(brdComparisonRows(filtered)),variance=key=>brdDelta(m[key],prior[key]);const matrix=[['إجمالي المبيعات','gross'],['إجمالي الكمية المباعة','grossQty'],['إجمالي المرتجعات','returns'],['إجمالي الكمية المرتجعة','returnedQty'],['صافي المبيعات','net'],['صافي الكمية المباعة','netQty'],['المستحق','net'],['المدفوع / المحصل','collected'],['المديونية المتبقية','outstanding'],['عدد الفواتير المعتمدة','invoices'],['عدد أوامر الارجاع','returnOrders']];document.querySelector('#comparisonMatrix thead tr').innerHTML='<th>المؤشر</th><th>الفترة الحالية</th><th>فترة المقارنة</th><th>نسبة الفرق / النمو</th>';document.querySelector('#comparisonMatrix tbody').innerHTML=matrix.map(([label,key])=>`<tr><td>${label}</td><td>${brdNum(m[key])}</td><td>${brdNum(prior[key])}</td><td class="${variance(key)>=0?'val-green':'val-red'}">${variance(key).toFixed(1)}٪</td></tr>`).join(''); }
+  function brdRender(){brdSyncOptions();brdKpis();brdTable();brdProductsChart();brdGrowthChart();brdGeoChart();brdReps();brdReports();const source=document.getElementById('dataSourceFilter'),status=document.getElementById('salesOrderStatusFilter');if(source){source.value=brdState.source;status.hidden=brdState.source!=='salesOrder';status.value=brdState.salesOrderStatus;}const date=document.getElementById('dashboardDate'),summary=document.getElementById('dashboardFilterSummary');if(date)date.textContent=brdDateText();if(summary)summary.textContent=`${brdState.filters.region||'كل المناطق'} | ${brdState.filters.rep||'كل المندوبين'} | ${brdState.filters.category||'كل الفئات'}`;window.__dashboardRows=()=>brdCurrentRows(brdFiltered());window.__dashboardLedger=brdSourceRows;window.refreshRepresentativeAmounts?.();window.renderReturnsAnalyticsTable?.();}
+  function brdApply(){const ids={region:'regionFilter',city:'cityFilter',rep:'repFilter',customer:'customerFilter',category:'catFilter',product:'productFilter',month:'monthFilter',year:'yearFilter',period:'periodFilter',day:'dayFilter'};Object.entries(ids).forEach(([key,id])=>{const el=document.getElementById(id);if(el)brdState.filters[key]=el.value;});brdState.source=document.getElementById('dataSourceFilter').value;brdState.salesOrderStatus=document.getElementById('salesOrderStatusFilter').value;brdState.comparison=document.getElementById('comparisonFilter').value;brdState.filters.query=document.getElementById('globalSearch').value.trim();brdState.filters.from=document.getElementById('dateFrom').value;brdState.filters.to=document.getElementById('dateTo').value;brdRender();}
+  window.toggleRepRow=id=>{const key=String(id);brdState.repExpanded.has(key)?brdState.repExpanded.delete(key):brdState.repExpanded.add(key);brdReps();};
+  window.brdToggle=id=>{brdState.expanded.has(id)?brdState.expanded.delete(id):brdState.expanded.add(id);brdTable();};
+  window.expandAll=()=>{const keys=brdState.groupKeys.length?brdState.groupKeys:['region'];const add=(rows,level,path=[])=>{if(level>=keys.length-1)return;const values=brdDistinct(rows,keys[level]);values.forEach(value=>{const next=[...path,value];brdState.expanded.add(next.join('\u001f'));add(rows.filter(row=>row[keys[level]]===value),level+1,next);});};add(brdFiltered(),0);brdTable();}; window.collapseAll=()=>{brdState.expanded.clear();brdTable();};
+  window.applyFilters=brdApply; window.toggleView=()=>{brdState.metric=brdState.metric==='amount'?'quantity':'amount';document.getElementById('viewToggle').classList.toggle('qty');brdProductsChart();};
+  window.setDateTab=(button,mode)=>{brdState.mode=mode;document.querySelectorAll('.date-tab').forEach(tab=>tab.classList.remove('active'));button.classList.add('active');document.getElementById('customDate').style.display=mode==='مخصص'?'flex':'none';brdRender();};
+  window.switchProductChart=(mode,button)=>{window.brdProductMode=mode;document.querySelectorAll('.tab-btn').forEach(tab=>tab.classList.remove('active-top','active-bot'));button.classList.add(mode==='top'?'active-top':'active-bot');brdProductsChart();};
+  window.setComparison=(mode,button)=>{brdState.comparison=mode;document.querySelectorAll('#momTab,#yoyTab').forEach(tab=>tab.classList.remove('active-top'));button.classList.add('active-top');brdReports();};
+  window.toggleRepSort=()=>{brdLedger.reverse();brdReps();};
+  window.exportDashboard=()=>{const m=brdMetric(brdFiltered());const rows=[['التقرير','القيمة'],['إجمالي المبيعات',brdMoney(m.gross)],['المرتجعات',brdMoney(m.returns)],['صافي المبيعات',brdMoney(m.net)],['المحصّل',brdMoney(m.collected)],['المديونية',brdMoney(m.outstanding)]];const csv=rows.map(row=>row.map(value=>`"${String(value).replaceAll('"','""')}"`).join(',')).join('\n');const link=document.createElement('a');link.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv'}));link.download='sheikh-foam-sales.csv';link.click();};
+  window.exportTableCsv=window.exportDashboard;
+  document.addEventListener('DOMContentLoaded',()=>{document.getElementById('globalSearch').addEventListener('input',brdApply);['region','city','rep','customer','category','product','month','year','period','day'].forEach(key=>document.getElementById(key==='category'?'catFilter':key+'Filter').addEventListener('change',brdApply));document.getElementById('dateFrom').addEventListener('change',brdApply);document.getElementById('dateTo').addEventListener('change',brdApply);document.getElementById('groupByFilter').addEventListener('change',event=>{const selected=[...event.target.selectedOptions].map(option=>option.value);brdState.groupKeys=[...brdState.groupKeys.filter(key=>selected.includes(key)),...selected.filter(key=>!brdState.groupKeys.includes(key))];if(!brdState.groupKeys.length)brdState.groupKeys=['region'];brdState.expanded.clear();brdTable();});document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{brdState.sortDirection=brdState.sortKey===th.dataset.sort&&brdState.sortDirection==='desc'?'asc':'desc';brdState.sortKey=th.dataset.sort;brdTable();}));brdRender();});
+})();
+</script>
+
+<script type="text/legacy">
+/* ═══════════════════════════════════════════════════════════════════
+   EXCEL EXPORT FUNCTIONS — uses SheetJS (xlsx.full.min.js)
+   ═══════════════════════════════════════════════════════════════════ */
+
+function xlsxDownload(wb, filename) {
+  XLSX.writeFile(wb, filename);
+}
+
+function tableToSheet(tableId, sheetName) {
+  const table = document.getElementById(tableId);
+  if (!table) return null;
+  return XLSX.utils.table_to_book(table, { sheet: sheetName });
+}
+
+/* --- تصدير جدول المرتجعات --- */
+function exportReturnsToExcel() {
+  const wb = tableToSheet('returnsAnalyticsTable', 'تقرير المرتجعات');
+  if (wb) xlsxDownload(wb, 'تقرير-المرتجعات.xlsx');
+}
+
+/* --- تصدير مصفوفة المقارنة التحليلية --- */
+function exportComparisonMatrixToExcel() {
+  const wb = tableToSheet('comparisonMatrix', 'تقرير المقارنة التحليلية');
+  if (wb) xlsxDownload(wb, 'تقرير-المقارنة-التحليلية.xlsx');
+}
+
+/* --- تصدير جدول أداء المندوبين --- */
+function exportSalesRepsToExcel() {
+  const wb = tableToSheet('repList', 'أداء المندوبين');
+  if (wb) xlsxDownload(wb, 'أداء-مندوبي-المبيعات.xlsx');
+}
+
+/* --- تصدير جدول تقرير المبيعات التفصيلي (drill-down) --- */
+function exportDetailTableToExcel() {
+  // collect visible table rows from drillTableBody + header
+  const tbody = document.getElementById('drillTableBody');
+  const tbl = tbody ? tbody.closest('table') : null;
+  if (tbl) {
+    const wb = XLSX.utils.table_to_book(tbl, { sheet: 'تقرير المبيعات التفصيلي' });
+    xlsxDownload(wb, 'تقرير-المبيعات-التفصيلي.xlsx');
+  }
+}
+
+/* --- تصدير الرسم البياني للمنتجات (بيانات) --- */
+function exportProductChartToExcel() {
+  const rows = window._lastProductChartData || [];
+  if (!rows.length) { alert('لا توجد بيانات لتصديرها'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'أفضل المنتجات');
+  xlsxDownload(wb, 'أفضل-المنتجات.xlsx');
+}
+
+/* --- تصدير الرسم البياني الجغرافي (بيانات) --- */
+function exportGeoChartToExcel() {
+  const rows = window._lastGeoChartData || [];
+  if (!rows.length) { alert('لا توجد بيانات لتصديرها'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'التوزيع الجغرافي');
+  xlsxDownload(wb, 'التوزيع-الجغرافي.xlsx');
+}
+
+/* --- تصدير الرسم البياني للنمو مقابل الإلغاء --- */
+function exportGrowthChartToExcel() {
+  const rows = window._lastGrowthChartData || [];
+  if (!rows.length) { alert('لا توجد بيانات لتصديرها'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'محرك النمو');
+  xlsxDownload(wb, 'محرك-النمو-مقابل-الإلغاء.xlsx');
+}
+
+/* --- ملء جدول التقرير التحليلي للمرتجعات --- */
+function renderReturnsAnalyticsTable() {
+  const ledger = typeof window.__dashboardRows === 'function'
+    ? window.__dashboardRows()
+    : (window.__dashboardLedger || window.transactionSeed || []);
+  const returnsRows = ledger.filter(r => r.returns > 0 || r.returnedQty > 0);
+  const tbody = document.getElementById('returnsTableBody');
+  if (!tbody) return;
+  if (!returnsRows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--ks-text-muted);padding:24px;">لا توجد مرتجعات في الفترة المحددة</td></tr>';
+    return;
+  }
+  const brdMoneyFn = v => `${Math.round(v||0).toLocaleString('ar-EG')} ج.م`;
+  const brdNumFn   = v => Math.round(v||0).toLocaleString('ar-EG');
+  tbody.innerHTML = returnsRows.slice(0, 20).map((row, i) => {
+    const onSystem = row.returnOnSystem !== undefined ? row.returnOnSystem : (row.returnOrders > 0);
+    const creditNote = row.creditNote || (row.returnOrders > 0 ? `CN-${String(i+1).padStart(4,'0')}` : '—');
+    return `<tr>
+      <td>${row.product || '—'}</td>
+      <td>${row.category || '—'}</td>
+      <td><span class="ret-badge ${onSystem?'yes':'no'}">${onSystem?'نعم':'لا'}</span></td>
+      <td style="font-family:monospace;font-size:12px;">${creditNote}</td>
+      <td>${row.rep || row.salesRep || '—'}</td>
+      <td>${row.region || '—'}</td>
+      <td>${brdNumFn(row.returnedQty||0)}</td>
+      <td class="ret-amt">${brdMoneyFn(row.returns||0)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* hook into DOMContentLoaded to fill returns table */
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(renderReturnsAnalyticsTable, 200);
+});
+</script>
+<script type="text/legacy">
+  const dynamicRepExpanded = new Set();
+
+  function toggleDynamicRepRow(name) {
+    if (dynamicRepExpanded.has(name)) dynamicRepExpanded.delete(name);
+    else dynamicRepExpanded.add(name);
+    refreshRepresentativeAmounts();
+  }
+
+  function refreshRepresentativeAmounts() {
+    const rows = typeof window.__dashboardRows === 'function' ? window.__dashboardRows() : [];
+    const sourceRows = rows.length ? rows : (typeof window.__dashboardLedger === 'function' ? window.__dashboardLedger() : []);
+    const totals = new Map();
+    sourceRows.forEach(row => {
+      const current = totals.get(row.rep) || { achieved: 0, collected: 0 };
+      current.achieved += Number(row.gross) || 0;
+      current.collected += Number(row.collected) || 0;
+      totals.set(row.rep, current);
+    });
+    const targets = typeof salesReps !== 'undefined' ? salesReps : [];
+    const names = [...totals.keys()].sort((a, b) => totals.get(b).achieved - totals.get(a).achieved);
+    const body = document.querySelector('#repList tbody');
+    if (!body) return;
+    body.innerHTML = names.map((name, index) => {
+      const total = totals.get(name);
+      const representative = targets.find(rep => rep.name === name) || {};
+      const target = representative.target || 0;
+      const percentage = target ? total.achieved / target * 100 : 0;
+      const actualPercentage = Number(percentage.toFixed(1));
+      const theoreticalPercentage = representative.theoreticalPercentage ?? actualPercentage;
+      const theoreticalGap = Number((theoreticalPercentage - actualPercentage).toFixed(1));
+      const actualGap = Number((actualPercentage - 100).toFixed(1));
+      const cls = percentage >= 100 ? 'over' : percentage >= 80 ? 'ok' : 'low';
+      const open = dynamicRepExpanded.has(name);
+      const remaining = total.achieved - total.collected;
+      return `<tr class="rep-main-row ${open ? 'is-expanded' : ''}" onclick='toggleDynamicRepRow(${JSON.stringify(name)})'>
+        <td><span class="rep-toggle">${open ? '▲' : '▼'}</span><span class="rep-rank">#${index + 1}</span> <span class="rep-name">${name}</span></td>
+        <td><span class="rep-bar-track"><span class="rep-bar-fill ${cls}" style="display:block;width:${Math.min(percentage, 100)}%;"></span></span><span class="rep-pct ${cls}">${percentage.toFixed(1)}٪</span></td>
+        <td class="rep-value">${brdDisplayMoney(total.achieved)}</td>
+        <td class="rep-explanation">من المصدر المحدد</td>
+      </tr>
+      <tr class="rep-detail-row ${open ? 'is-expanded' : ''}"><td colspan="4"><div class="rep-detail-panel">
+        <div class="rep-detail-card kpi"><span class="rep-detail-label">مؤشر الأداء</span><span class="rep-detail-value">${representative.kpi || (actualPercentage >= 100 ? 'متفوق' : actualPercentage >= 80 ? 'محقق للهدف' : 'يحتاج متابعة')}</span></div>
+        <div class="rep-detail-card target"><span class="rep-detail-label">الهدف</span><span class="rep-detail-value">${brdDisplayMoney(target)}</span></div>
+        <div class="rep-detail-card"><span class="rep-detail-label">المبلغ الفعلي المنجز</span><span class="rep-detail-value">${brdDisplayMoney(total.achieved)}</span></div>
+        <div class="rep-detail-card kpi"><span class="rep-detail-label">المبلغ المحصل</span><span class="rep-detail-value">${brdDisplayMoney(total.collected)}</span></div>
+        <div class="rep-detail-card gap"><span class="rep-detail-label">الباقي</span><span class="rep-detail-value">${brdDisplayMoney(remaining)}</span></div>
+        <div class="rep-detail-card"><span class="rep-detail-label">النسبة الفعلية</span><span class="rep-detail-value">${actualPercentage}٪</span></div>
+        <div class="rep-detail-card"><span class="rep-detail-label">النسبة النظرية</span><span class="rep-detail-value">${theoreticalPercentage}٪</span></div>
+        <div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة النظرية</span><span class="rep-detail-value">${theoreticalGap >= 0 ? '+' : ''}${theoreticalGap}٪</span></div>
+        <div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة الفعلية</span><span class="rep-detail-value">${actualGap >= 0 ? '+' : ''}${actualGap}٪</span></div>
+      </div></td></tr>`;
+    }).join('');
+  }
+
+  function brdDisplayMoney(value) {
+    return `${Math.round(value || 0).toLocaleString('ar-EG')} ج.م`;
+  }
+
+  window.refreshRepresentativeAmounts = refreshRepresentativeAmounts;
+</script>
+<script>
+  const dashboardState = {
+    records: [],
+    filters: { region: '', city: '', rep: '', customer: '', category: '', product: '', month: '', year: '', period: '', day: '', query: '' },
+    charts: { product: null, growth: null, regional: null },
+    metric: 'amount'
+  };
+
+  const filterConfig = {
+    region: ['regionFilter', 'جميع المناطق'],
+    city: ['cityFilter', 'جميع المدن'],
+    rep: ['repFilter', 'جميع المندوبين'],
+    customer: ['customerFilter', 'جميع العملاء'],
+    category: ['catFilter', 'جميع الفئات'],
+    product: ['productFilter', 'جميع المنتجات'],
+    month: ['monthFilter', 'كل الأشهر'],
+    year: ['yearFilter', 'كل السنوات'],
+    period: ['periodFilter', 'كل الفترات'],
+    day: ['dayFilter', 'كل الأيام']
+  };
+
+  function setFilterOptions(key, values) {
+    const config = filterConfig[key];
+    const select = config && document.getElementById(config[0]);
+    if (!select) return;
+    select.innerHTML = `<option value="">${config[1]}</option>` + [...new Set(values || [])]
+      .filter(value => value !== undefined && value !== null && value !== '')
+      .map(value => `<option value="${String(value).replaceAll('"', '&quot;')}">${value}</option>`)
+      .join('');
+  }
+
+  function resetDynamicSurface() {
+    Object.keys(filterConfig).forEach(key => setFilterOptions(key, []));
+    document.getElementById('repList').querySelector('tbody').replaceChildren();
+    document.getElementById('drillTableBody').replaceChildren();
+    document.getElementById('returnsTableBody').replaceChildren();
+    document.querySelector('#comparisonMatrix tbody').replaceChildren();
+    document.getElementById('churnList').replaceChildren();
+    document.querySelectorAll('.churn-badge-text').forEach(node => { node.textContent = '0 تحذيرات'; });
+    document.getElementById('prodGrowthRow').replaceChildren();
+    document.getElementById('regionMiniGrid').replaceChildren();
+    document.getElementById('productDetailCard').hidden = true;
+    document.getElementById('regionDetailCard').hidden = true;
+    document.querySelectorAll('.kpi-value').forEach(node => { node.textContent = '0 EGP'; });
+    document.querySelectorAll('.kpi-full').forEach(node => { node.textContent = '0 EGP'; });
+    document.querySelectorAll('.kpi-extra span').forEach(node => { node.textContent = '0'; });
+    document.querySelectorAll('.rate-fill').forEach(node => { node.style.width = '0%'; });
+    document.querySelectorAll('.rate-pct').forEach(node => { node.textContent = '0%'; });
+  }
+
+  function createChart(id, type) {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof Chart === 'undefined') return null;
+    const current = Chart.getChart(canvas);
+    if (current) current.destroy();
+    return new Chart(canvas, {
+      type,
+      data: { labels: [], datasets: [] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+
+  function initializeCharts() {
+    dashboardState.charts.product = createChart('productChart', 'bar');
+    dashboardState.charts.growth = createChart('growthChart', 'line');
+    dashboardState.charts.regional = createChart('regionalChart', 'bar');
+  }
+
+  function populateFilterOptions(records) {
+    Object.keys(filterConfig).forEach(key => setFilterOptions(key, records.map(record => record[key])));
+  }
+
+  function setDashboardData(payload) {
+    const records = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.records) ? payload.records : []);
+    dashboardState.records = records;
+    resetDynamicSurface();
+    populateFilterOptions(records);
+  }
+
+  function applyFilters() {
+    Object.entries(filterConfig).forEach(([key, config]) => {
+      dashboardState.filters[key] = document.getElementById(config[0]).value;
+    });
+    dashboardState.filters.query = document.getElementById('globalSearch').value.trim();
+  }
+
+  function toggleView() {
+    dashboardState.metric = dashboardState.metric === 'amount' ? 'quantity' : 'amount';
+    document.getElementById('viewToggle').classList.toggle('qty');
+  }
+
+  function setDateTab(button, mode) {
+    document.querySelectorAll('.date-tab').forEach(tab => tab.classList.remove('active'));
+    button.classList.add('active');
+    document.getElementById('customDate').style.display = mode === 'مخصص' ? 'flex' : 'none';
+  }
+
+  function switchProductChart(mode, button) {
+    document.querySelectorAll('.tab-btn').forEach(tab => tab.classList.remove('active-top', 'active-bot'));
+    button.classList.add(mode === 'top' ? 'active-top' : 'active-bot');
+  }
+
+  function exportDashboard() {}
+  function exportProductChartToExcel() {}
+  function exportGrowthChartToExcel() {}
+  function exportGeoChartToExcel() {}
+  function exportComparisonMatrixToExcel() {}
+  function exportReturnsToExcel() {}
+  function exportDetailTableToExcel() {}
+  function toggleNotif() {}
+  function toggleRepSort() {}
+  function expandAll() {}
+  function collapseAll() {}
+
+  document.addEventListener('DOMContentLoaded', () => {
+    resetDynamicSurface();
+    initializeCharts();
+    document.getElementById('globalSearch').addEventListener('input', applyFilters);
+    document.getElementById('dataSourceFilter').addEventListener('change', applyFilters);
+    document.getElementById('salesOrderStatusFilter').addEventListener('change', applyFilters);
+  });
+
+  window.dashboardState = dashboardState;
+  window.setDashboardData = setDashboardData;
+</script>
+</body>
+</html>
