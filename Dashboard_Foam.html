@@ -1607,9 +1607,25 @@ function renderDrilldownTable(drilldown) {
   if (!tbody || !drilldown) return;
 
   const rows = [];
+  let totalInvoices = 0;
+  let totalGrossQty = 0;
+  let totalReturnedQty = 0;
+  let totalNetQty = 0;
+  let totalSales = 0;
+  let totalCollected = 0;
+  let totalOutstanding = 0;
+
   drilldown.forEach(reg => {
     const isExpanded = liveDashboard.expandedRegions.has(reg.name);
     const escapedReg = reg.name.replace(/'/g, "\\'");
+    totalInvoices += (reg.invoices || 0);
+    totalGrossQty += (reg.grossQty || 0);
+    totalReturnedQty += (reg.returnedQty || 0);
+    totalNetQty += (reg.netQty || 0);
+    totalSales += (reg.sales || 0);
+    totalCollected += (reg.collected || 0);
+    totalOutstanding += (reg.outstanding || 0);
+
     rows.push(`
       <tr class="level-state" onclick="toggleRegionDrill('${escapedReg}')">
         <td>
@@ -1620,11 +1636,11 @@ function renderDrilldownTable(drilldown) {
           </div>
         </td>
         <td class="center">${formatNumber(reg.invoices)}</td>
-        <td class="center">—</td>
-        <td class="center">—</td>
-        <td class="center">—</td>
+        <td class="center val-normal">${formatNumber(reg.grossQty || 0)}</td>
+        <td class="center val-red">${formatNumber(reg.returnedQty || 0)}</td>
+        <td class="center val-blue">${formatNumber(reg.netQty || 0)}</td>
         <td class="left val-blue">${formatMoney(reg.sales)}</td>
-        <td class="left val-red">0 ج.م</td>
+        <td class="left val-red">${formatMoney(reg.returnedQty ? Math.round(reg.sales * (reg.returnedQty / (reg.grossQty || 1))) : 0)}</td>
         <td class="left val-blue">${formatMoney(reg.sales)}</td>
         <td class="left val-green">${formatMoney(reg.collected)}</td>
         <td class="left val-warn">${formatMoney(reg.outstanding)}</td>
@@ -1652,9 +1668,9 @@ function renderDrilldownTable(drilldown) {
               </div>
             </td>
             <td class="center">${formatNumber(cust.invoices)}</td>
-            <td class="center">—</td>
-            <td class="center">—</td>
-            <td class="center">—</td>
+            <td class="center val-normal">${formatNumber(cust.grossQty || 0)}</td>
+            <td class="center val-red">${formatNumber(cust.returnedQty || 0)}</td>
+            <td class="center val-blue">${formatNumber(cust.netQty || 0)}</td>
             <td class="left val-blue">${formatMoney(cust.sales)}</td>
             <td class="left val-red">0 ج.م</td>
             <td class="left val-blue">${formatMoney(cust.sales)}</td>
@@ -1670,6 +1686,32 @@ function renderDrilldownTable(drilldown) {
   });
 
   tbody.innerHTML = rows.join('');
+
+  // Update footer totals
+  const tfoot = document.querySelector('.table-card table tfoot');
+  if (tfoot) {
+    const totalRate = totalSales ? Number((totalCollected / totalSales * 100).toFixed(1)) : 0;
+    tfoot.innerHTML = `
+      <tr>
+        <td style="color:#e2e8f0;font-weight:700;">الإجمالي الكلي</td>
+        <td class="center val-normal" style="font-weight:700;">${formatNumber(totalInvoices)}</td>
+        <td class="center val-normal" style="font-weight:700;">${formatNumber(totalGrossQty)}</td>
+        <td class="center val-red" style="font-weight:700;">${formatNumber(totalReturnedQty)}</td>
+        <td class="center val-blue" style="font-weight:700;">${formatNumber(totalNetQty)}</td>
+        <td class="left val-blue" style="font-weight:700;">${formatMoney(totalSales)}</td>
+        <td class="left val-red" style="font-weight:700;">${formatMoney(liveDashboard.data?.kpis?.returns || 0)}</td>
+        <td class="left val-blue" style="font-weight:700;">${formatMoney(liveDashboard.data?.kpis?.net || totalSales)}</td>
+        <td class="left val-green" style="font-weight:700;">${formatMoney(totalCollected)}</td>
+        <td class="left val-warn" style="font-weight:700;">${formatMoney(totalOutstanding)}</td>
+        <td class="center">
+          <div class="rate-wrap">
+            <div class="rate-bar"><div class="rate-fill ${totalRate >= 50 ? 'good' : 'bad'}" style="width:${Math.min(totalRate, 100)}%;"></div></div>
+            <span class="rate-pct ${totalRate >= 50 ? 'good' : 'bad'}">${totalRate}٪</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
 }
 
 function renderReturnsTable(returns) {
@@ -1955,8 +1997,59 @@ function exportComparisonMatrixToExcel() {
 }
 
 function exportDetailTableToExcel() {
-  const wb = createWorkbook({ التفصيلي: liveDashboard.data?.drilldown || [], العملاء: liveDashboard.data?.growthAnalysis?.customers || [] });
-  xlsxDownload(wb, 'التقرير-التفصيلي.xlsx');
+  const drilldown = liveDashboard.data?.drilldown || [];
+  const flatRows = [];
+  drilldown.forEach(reg => {
+    flatRows.push({
+      'المستوى': 'محافظة / منطقة',
+      'المحافظة / المنطقة': reg.name,
+      'المدينة': '—',
+      'العميل': '—',
+      'المندوب': '—',
+      'عدد الفواتير': reg.invoices || 0,
+      'إجمالي الكمية المباعة': reg.grossQty || 0,
+      'الكمية المرتجعة': reg.returnedQty || 0,
+      'صافي الكمية المباعة': reg.netQty || 0,
+      'إجمالي المبيعات': reg.sales || 0,
+      'المبالغ المحصلة': reg.collected || 0,
+      'المديونية القائمة': reg.outstanding || 0,
+      'نسبة التحصيل': (reg.rate || 0) + '%'
+    });
+    (reg.customers || []).forEach(cust => {
+      flatRows.push({
+        'المستوى': 'عميل',
+        'المحافظة / المنطقة': cust.state,
+        'المدينة': cust.city,
+        'العميل': cust.name,
+        'المندوب': cust.rep,
+        'عدد الفواتير': cust.invoices || 0,
+        'إجمالي الكمية المباعة': cust.grossQty || 0,
+        'الكمية المرتجعة': cust.returnedQty || 0,
+        'صافي الكمية المباعة': cust.netQty || 0,
+        'إجمالي المبيعات': cust.sales || 0,
+        'المبالغ المحصلة': cust.collected || 0,
+        'المديونية القائمة': cust.outstanding || 0,
+        'نسبة التحصيل': (cust.rate || 0) + '%'
+      });
+    });
+  });
+
+  const wb = createWorkbook({
+    'التقرير التفصيلي': flatRows,
+    'ملخص المناطق': drilldown.map(r => ({
+      'المنطقة': r.name,
+      'الفواتير': r.invoices,
+      'إجمالي الكمية': r.grossQty || 0,
+      'المرتجع': r.returnedQty || 0,
+      'صافي الكمية': r.netQty || 0,
+      'المبيعات': r.sales,
+      'المحصل': r.collected,
+      'المديونية': r.outstanding,
+      'نسبة التحصيل': r.rate + '%'
+    })),
+    'العملاء': liveDashboard.data?.growthAnalysis?.customers || []
+  });
+  xlsxDownload(wb, 'التقرير-التفصيلي-للمبيعات.xlsx');
 }
 
 async function updateAuthUI() {

@@ -496,7 +496,7 @@ async function buildSalesOrderOverview(auth, query) {
   const categoryId = asPositiveId(query.category);
   let filteredLines = lines;
   if (productId || categoryId) {
-    const productDomain = productId ? [['product_id', '=', productId]] : [['product_id.categ_id', '=', categoryId]];
+    const productDomain = productId ? [['product_id', '=', productId]] : [['product_id.categ_id', 'child_of', categoryId]];
     const matching = await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [[['order_id', 'in', orderIds], ...productDomain]], { fields: ['id', 'order_id'], limit: 50000 });
     const matchingOrderIds = new Set(matching.map(line => line.order_id?.[0]));
     orders = orders.filter(order => matchingOrderIds.has(order.id));
@@ -516,17 +516,59 @@ async function buildSalesOrderOverview(auth, query) {
     value.amount += line.price_subtotal || 0; value.quantity += line.product_uom_qty || 0; value.count += 1; byProduct.set(value.id, value);
   });
   const products = [...byProduct.values()].map(p => ({ ...p, amount: Math.round(p.amount), quantity: Math.round(p.quantity) }));
+
+  // Map quantities per partner from filtered lines
+  const orderPartnerMap = new Map(orders.map(o => [o.id, o.partner_id?.[0]]));
+  const partnerQtyMap = new Map();
+  filteredLines.forEach(line => {
+    const pid = orderPartnerMap.get(line.order_id?.[0]);
+    if (!pid) return;
+    const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
+    entry.grossQty += (line.product_uom_qty || 0);
+    entry.netQty += (line.product_uom_qty || 0);
+    partnerQtyMap.set(pid, entry);
+  });
+
   const regional = new Map(); const reps = new Map(); const customers = new Map();
   orders.forEach(order => {
     const partner = partners.get(order.partner_id?.[0]) || { state: 'غير محدد', city: 'غير محدد', name: order.partner_id?.[1] || 'غير محدد' };
-    const region = regional.get(partner.state) || { name: partner.state, sales: 0, collected: 0, outstanding: 0, invoices: 0 };
+    const pQty = partnerQtyMap.get(order.partner_id?.[0]) || { grossQty: 0, returnedQty: 0, netQty: 0 };
+    const region = regional.get(partner.state) || { name: partner.state, sales: 0, collected: 0, outstanding: 0, invoices: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
     region.sales += order.amount_total || 0; region.invoices += 1; regional.set(region.name, region);
     const rep = reps.get(order.user_id?.[0]) || { id: order.user_id?.[0], name: order.user_id?.[1] || 'غير محدد', achieved: 0, collected: 0, remaining: 0, count: 0, target: 0 };
     rep.achieved += order.amount_total || 0; rep.count += 1; reps.set(rep.id, rep);
-    const customer = customers.get(order.partner_id?.[0]) || { id: order.partner_id?.[0], name: partner.name, state: partner.state, city: partner.city, rep: order.user_id?.[1] || 'غير محدد', sales: 0, collected: 0, outstanding: 0, invoices: 0 };
+    const customer = customers.get(order.partner_id?.[0]) || {
+      id: order.partner_id?.[0],
+      name: partner.name,
+      state: partner.state,
+      city: partner.city,
+      rep: order.user_id?.[1] || 'غير محدد',
+      sales: 0,
+      collected: 0,
+      outstanding: 0,
+      invoices: 0,
+      grossQty: Math.round(pQty.grossQty),
+      returnedQty: 0,
+      netQty: Math.round(pQty.netQty)
+    };
     customer.sales += order.amount_total || 0; customer.invoices += 1; customers.set(customer.id, customer);
   });
-  const regions = [...regional.values()].map(r => ({ ...r, collected: Math.round(r.sales * (gross ? collected / gross : 0)), outstanding: Math.round(r.sales * (gross ? outstanding / gross : 0)), sales: Math.round(r.sales), rate: gross ? Number((collected / gross * 100).toFixed(1)) : 0 })).sort((a, b) => b.sales - a.sales);
+  const regions = [...regional.values()].map(r => {
+    const matchingCusts = [...customers.values()].filter(c => c.state === r.name);
+    const grossQty = matchingCusts.reduce((sum, c) => sum + (c.grossQty || 0), 0);
+    const returnedQty = matchingCusts.reduce((sum, c) => sum + (c.returnedQty || 0), 0);
+    const netQty = matchingCusts.reduce((sum, c) => sum + (c.netQty || 0), 0);
+    return {
+      ...r,
+      grossQty,
+      returnedQty,
+      netQty,
+      collected: Math.round(r.sales * (gross ? collected / gross : 0)),
+      outstanding: Math.round(r.sales * (gross ? outstanding / gross : 0)),
+      sales: Math.round(r.sales),
+      rate: gross ? Number((collected / gross * 100).toFixed(1)) : 0
+    };
+  }).sort((a, b) => b.sales - a.sales);
   const repsList = [...reps.values()].map(rep => ({ ...rep, achieved: Math.round(rep.achieved), collected: null, remaining: null, target: null, percentage: null, theoreticalPercentage: null, theoreticalGap: null, actualGap: null, kpi: 'غير متاح: لا يوجد مصدر هدف معتمد' }));
   const customerRows = [...customers.values()].map(c => ({ ...c, sales: Math.round(c.sales), collected: null, outstanding: null, rate: null }));
   const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']; const monthlyGross = new Array(12).fill(0);
@@ -626,7 +668,7 @@ app.get('/api/dashboard/overview', async (req, res) => {
     if (repId) moveDomain.push(['invoice_user_id', '=', repId]);
     if (customerId) moveDomain.push(['partner_id', '=', customerId]);
     if (productId) moveDomain.push(['invoice_line_ids.product_id', '=', productId]);
-    if (categoryId) moveDomain.push(['invoice_line_ids.product_id.categ_id', '=', categoryId]);
+    if (categoryId) moveDomain.push(['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]);
 
     const growthAnalysis = await buildGrowthAnalysis(
       auth,
@@ -805,7 +847,7 @@ app.get('/api/dashboard/overview', async (req, res) => {
       lineDomain.push('|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
     }
     if (productId) lineDomain.push(['product_id', '=', productId]);
-    if (categoryId) lineDomain.push(['product_id.categ_id', '=', categoryId]);
+    if (categoryId) lineDomain.push(['product_id.categ_id', 'child_of', categoryId]);
 
     const [topProductsSales, bottomProductsSales] = await Promise.all([
       odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
@@ -840,12 +882,58 @@ app.get('/api/dashboard/overview', async (req, res) => {
         count: p.product_id_count || 0
       }));
 
-    // 6. Regional Distribution (by Customer State)
-    const partnerSalesGroup = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-      moveDomain,
-      ['amount_total:sum', 'amount_residual:sum'],
-      ['partner_id', 'move_type']
+    // 6. Regional Distribution (by Customer State) and Line Quantities
+    const allLinesDomain = [
+      ['move_id.state', '=', 'posted'],
+      ['move_id.move_type', 'in', ['out_invoice', 'out_refund']],
+      ['display_type', '=', 'product'],
+      ['date', '>=', start],
+      ['date', '<=', end]
+    ];
+    if (repId) allLinesDomain.push(['move_id.invoice_user_id', '=', repId]);
+    if (customerId) allLinesDomain.push(['move_id.partner_id', '=', customerId]);
+    if (req.query.region || req.query.city) {
+      if (req.query.query) allLinesDomain.push('&', ['move_id.partner_id', 'in', allowedPartnerIds], '|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
+      else allLinesDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
+    } else if (req.query.query) {
+      allLinesDomain.push('|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
+    }
+    if (productId) allLinesDomain.push(['product_id', '=', productId]);
+    if (categoryId) allLinesDomain.push(['product_id.categ_id', 'child_of', categoryId]);
+
+    const [partnerSalesGroup, invoicesLinesGroup, refundsLinesGroup] = await Promise.all([
+      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+        moveDomain,
+        ['amount_total:sum', 'amount_residual:sum'],
+        ['partner_id', 'move_type']
+      ]),
+      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+        [...allLinesDomain, ['move_id.move_type', '=', 'out_invoice']],
+        ['quantity:sum'],
+        ['partner_id']
+      ]).catch(() => []),
+      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+        [...allLinesDomain, ['move_id.move_type', '=', 'out_refund']],
+        ['quantity:sum'],
+        ['partner_id']
+      ]).catch(() => [])
     ]);
+
+    const partnerQtyMap = new Map();
+    invoicesLinesGroup.forEach(g => {
+      if (!g.partner_id) return;
+      const pid = g.partner_id[0];
+      const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0 };
+      entry.grossQty += (g.quantity || 0);
+      partnerQtyMap.set(pid, entry);
+    });
+    refundsLinesGroup.forEach(g => {
+      if (!g.partner_id) return;
+      const pid = g.partner_id[0];
+      const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0 };
+      entry.returnedQty += (g.quantity || 0);
+      partnerQtyMap.set(pid, entry);
+    });
 
     const regionalTotals = {};
     const cityTotals = {};
@@ -865,7 +953,7 @@ app.get('/api/dashboard/overview', async (req, res) => {
 
       // State aggregate
       if (!regionalTotals[stateName]) {
-        regionalTotals[stateName] = { sales: 0, collected: 0, residual: 0, invoices: 0 };
+        regionalTotals[stateName] = { sales: 0, collected: 0, residual: 0, invoices: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
       }
       regionalTotals[stateName].sales += pSales;
       regionalTotals[stateName].collected += pCollected;
@@ -899,13 +987,28 @@ app.get('/api/dashboard/overview', async (req, res) => {
 
     const customersById = new Map();
     customerBreakdown.forEach(customer => {
-      const current = customersById.get(customer.id) || { ...customer, sales: 0, collected: 0, outstanding: 0, invoices: 0 };
+      const pQty = partnerQtyMap.get(customer.id) || { grossQty: 0, returnedQty: 0 };
+      const grossQty = Math.round(pQty.grossQty);
+      const returnedQty = Math.round(pQty.returnedQty);
+      const netQty = Math.max(0, grossQty - returnedQty);
+
+      const current = customersById.get(customer.id) || {
+        ...customer,
+        sales: 0,
+        collected: 0,
+        outstanding: 0,
+        invoices: 0,
+        grossQty,
+        returnedQty,
+        netQty
+      };
       current.sales += customer.sales;
       current.collected += customer.collected;
       current.outstanding += customer.outstanding;
       current.invoices += customer.invoices;
       customersById.set(customer.id, current);
     });
+
     customerBreakdown = [...customersById.values()].map(customer => ({
       ...customer,
       sales: Math.round(customer.sales),
@@ -913,6 +1016,15 @@ app.get('/api/dashboard/overview', async (req, res) => {
       outstanding: Math.max(0, Math.round(customer.outstanding)),
       rate: customer.sales ? Number((customer.collected / customer.sales * 100).toFixed(1)) : 0
     }));
+
+    // Sum quantities per region
+    customerBreakdown.forEach(cust => {
+      if (regionalTotals[cust.state]) {
+        regionalTotals[cust.state].grossQty += cust.grossQty || 0;
+        regionalTotals[cust.state].returnedQty += cust.returnedQty || 0;
+        regionalTotals[cust.state].netQty += cust.netQty || 0;
+      }
+    });
 
     const regionalList = Object.entries(regionalTotals)
       .map(([name, data]) => {
@@ -923,36 +1035,104 @@ app.get('/api/dashboard/overview', async (req, res) => {
           collected: Math.round(data.collected),
           outstanding: Math.round(data.residual),
           invoices: data.invoices,
+          grossQty: Math.round(data.grossQty || 0),
+          returnedQty: Math.round(data.returnedQty || 0),
+          netQty: Math.round(data.netQty || 0),
           rate
         };
       })
       .sort((a, b) => b.sales - a.sales);
 
-    // 7. Recent Returns / Credit Notes
-    const recentReturns = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
-      [...moveDomain, ['move_type', '=', 'out_refund']]
-    ], {
-      limit: 25,
-      order: 'invoice_date desc, id desc',
-      fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'amount_total', 'invoice_date', 'ref']
-    });
+    // 7. Recent Returns / Credit Notes (Line Level)
+    let productCatalog = getCached('product_catalog');
+    let categories = getCached('product_categories');
+    if (!productCatalog || !categories) {
+      const [rawProducts, rawCategories] = await Promise.all([
+        odooExecuteKw(auth.uid, auth.password, 'product.product', 'search_read', [[]], { fields: ['id', 'name', 'categ_id'], limit: 10000 }),
+        odooExecuteKw(auth.uid, auth.password, 'product.category', 'search_read', [[]], { fields: ['id', 'name'], limit: 10000 })
+      ]);
+      productCatalog = rawProducts.map(p => ({ id: p.id, name: p.name, categoryId: p.categ_id?.[0], categoryName: p.categ_id?.[1] })).filter(p => p.name);
+      const categoriesById = new Map(rawCategories.map(c => [c.id, { id: c.id, name: c.name }]));
+      productCatalog.forEach(p => {
+        if (p.categoryId && p.categoryName) categoriesById.set(p.categoryId, { id: p.categoryId, name: p.categoryName });
+      });
+      categories = [...categoriesById.values()].filter(c => c.name);
+      setCached('product_catalog', productCatalog, 30 * 60 * 1000);
+      setCached('product_categories', categories, 30 * 60 * 1000);
+    }
 
-    const returnsList = recentReturns.map((r, i) => {
-      const pInfo = r.partner_id ? partnerMap.get(r.partner_id[0]) : null;
-      return {
-        id: r.id,
-        creditNote: r.name || `CN-${String(i + 1).padStart(4, '0')}`,
-        product: r.ref || 'غير محدد',
-        category: 'غير محدد',
-        customer: r.partner_id ? r.partner_id[1] : 'غير محدد',
-        rep: r.invoice_user_id ? r.invoice_user_id[1] : 'غير محدد',
-        region: pInfo ? pInfo.state : 'غير محدد',
-        date: r.invoice_date,
-        returnedQty: 0,
-        returns: Math.round(r.amount_total || 0),
-        returnOnSystem: true
-      };
-    });
+    const returnLinesDomain = [
+      ['move_id.state', '=', 'posted'],
+      ['move_id.move_type', '=', 'out_refund'],
+      ['display_type', '=', 'product'],
+      ['date', '>=', start],
+      ['date', '<=', end]
+    ];
+    if (repId) returnLinesDomain.push(['move_id.invoice_user_id', '=', repId]);
+    if (customerId) returnLinesDomain.push(['move_id.partner_id', '=', customerId]);
+    if (req.query.region || req.query.city) {
+      if (req.query.query) returnLinesDomain.push('&', ['move_id.partner_id', 'in', allowedPartnerIds], '|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
+      else returnLinesDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
+    } else if (req.query.query) {
+      returnLinesDomain.push('|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
+    }
+    if (productId) returnLinesDomain.push(['product_id', '=', productId]);
+    if (categoryId) returnLinesDomain.push(['product_id.categ_id', 'child_of', categoryId]);
+
+    const recentReturnLines = await odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [
+      returnLinesDomain
+    ], {
+      limit: 50,
+      order: 'date desc, id desc',
+      fields: ['id', 'move_id', 'product_id', 'quantity', 'price_subtotal', 'date', 'partner_id']
+    }).catch(() => []);
+
+    let returnsList = [];
+    if (recentReturnLines.length > 0) {
+      returnsList = recentReturnLines.map((line, i) => {
+        const pId = line.partner_id ? line.partner_id[0] : null;
+        const pInfo = pId ? partnerMap.get(pId) : null;
+        const prod = productCatalog ? productCatalog.find(p => p.id === (line.product_id ? line.product_id[0] : null)) : null;
+        return {
+          id: line.id,
+          creditNote: line.move_id ? line.move_id[1] : `CN-${String(i + 1).padStart(4, '0')}`,
+          product: line.product_id ? line.product_id[1] : 'غير محدد',
+          category: prod?.categoryName || 'غير محدد',
+          customer: line.partner_id ? line.partner_id[1] : 'غير محدد',
+          rep: pInfo ? pInfo.rep : 'غير محدد',
+          region: pInfo ? pInfo.state : 'غير محدد',
+          date: line.date,
+          returnedQty: Math.round(line.quantity || 0),
+          returns: Math.round(line.price_subtotal || 0),
+          returnOnSystem: true
+        };
+      });
+    } else {
+      const recentReturns = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
+        [...moveDomain, ['move_type', '=', 'out_refund']]
+      ], {
+        limit: 25,
+        order: 'invoice_date desc, id desc',
+        fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'amount_total', 'invoice_date', 'ref']
+      }).catch(() => []);
+
+      returnsList = recentReturns.map((r, i) => {
+        const pInfo = r.partner_id ? partnerMap.get(r.partner_id[0]) : null;
+        return {
+          id: r.id,
+          creditNote: r.name || `CN-${String(i + 1).padStart(4, '0')}`,
+          product: r.ref || 'غير محدد',
+          category: 'غير محدد',
+          customer: r.partner_id ? r.partner_id[1] : 'غير محدد',
+          rep: r.invoice_user_id ? r.invoice_user_id[1] : (pInfo ? pInfo.rep : 'غير محدد'),
+          region: pInfo ? pInfo.state : 'غير محدد',
+          date: r.invoice_date,
+          returnedQty: 0,
+          returns: Math.round(r.amount_total || 0),
+          returnOnSystem: true
+        };
+      });
+    }
 
     // 8. Churn / Inactive Customer Warnings
     const churnWarnings = growthAnalysis.churnWarnings;
@@ -1000,22 +1180,6 @@ app.get('/api/dashboard/overview', async (req, res) => {
     }
 
     // 9. Filter Dropdown Options
-    let productCatalog = getCached('product_catalog');
-    let categories = getCached('product_categories');
-    if (!productCatalog || !categories) {
-      const [rawProducts, rawCategories] = await Promise.all([
-        odooExecuteKw(auth.uid, auth.password, 'product.product', 'search_read', [[]], { fields: ['id', 'name', 'categ_id'], limit: 10000 }),
-        odooExecuteKw(auth.uid, auth.password, 'product.category', 'search_read', [[]], { fields: ['id', 'name'], limit: 10000 })
-      ]);
-      productCatalog = rawProducts.map(p => ({ id: p.id, name: p.name, categoryId: p.categ_id?.[0], categoryName: p.categ_id?.[1] })).filter(p => p.name);
-      const categoriesById = new Map(rawCategories.map(c => [c.id, { id: c.id, name: c.name }]));
-      productCatalog.forEach(p => {
-        if (p.categoryId && p.categoryName) categoriesById.set(p.categoryId, { id: p.categoryId, name: p.categoryName });
-      });
-      categories = [...categoriesById.values()].filter(c => c.name);
-      setCached('product_catalog', productCatalog, 30 * 60 * 1000);
-      setCached('product_categories', categories, 30 * 60 * 1000);
-    }
     const distinctRegions = [...new Set(allPartnersList.map(p => p.state))].filter(Boolean);
     const distinctCities = [...new Set(allPartnersList.map(p => p.city))].filter(c => c && c !== 'غير محدد');
     const distinctReps = repsSales.filter(r => r.invoice_user_id).map(r => ({ id: r.invoice_user_id[0], name: r.invoice_user_id[1] }));
