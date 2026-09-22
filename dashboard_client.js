@@ -1137,6 +1137,37 @@ function sortDrilldown(field) {
   renderDrilldownTable(drilldown);
 }
 
+function updateChartColors() {
+  if (typeof Chart === 'undefined') return;
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  Chart.defaults.color = isLight ? '#475569' : '#94a3b8';
+  Chart.defaults.font.family = "'Cairo', sans-serif";
+}
+
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const next = isLight ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('shekh_theme', next); } catch (e) {}
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.innerHTML = next === 'light' ? '☀️' : '🌙';
+  updateChartColors();
+  if (liveDashboard.data?.charts) {
+    renderProductChart(liveDashboard.data.charts);
+    renderGrowthChart(liveDashboard.data.charts);
+    renderRegionalChart(liveDashboard.data.charts);
+  }
+}
+
+function initTheme() {
+  let saved = 'dark';
+  try { saved = localStorage.getItem('shekh_theme') || 'dark'; } catch (e) {}
+  document.documentElement.setAttribute('data-theme', saved);
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.innerHTML = saved === 'light' ? '☀️' : '🌙';
+  updateChartColors();
+}
+
 window.applyFilters = applyLiveFilters;
 window.setDateTab = setDateTab;
 window.switchProductChart = switchProductChart;
@@ -1148,6 +1179,7 @@ window.toggleRegionDrill = toggleRegionDrill;
 window.expandAll = expandAll;
 window.collapseAll = collapseAll;
 window.toggleNotif = toggleNotif;
+window.toggleTheme = toggleTheme;
 window.exportDashboard = exportDashboard;
 window.exportProductChartToExcel = exportProductChartToExcel;
 window.exportSalesRepsToExcel = exportSalesRepsToExcel;
@@ -1161,7 +1193,23 @@ window.updateAuthUI = updateAuthUI;
 window.updateLoginLink = updateAuthUI;
 window.refreshDashboard = () => loadLiveDashboard(true);
 
+// Back to Top Scroll Listener
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('backToTopBtn');
+  if (btn) {
+    if (window.scrollY > 200) {
+      btn.classList.add('visible');
+    } else {
+      btn.classList.remove('visible');
+    }
+  }
+}, { passive: true });
+
+// Initialize theme immediately
+initTheme();
+
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   updateAuthUI();
   document.getElementById('growthGroupingFilter')?.addEventListener('change', event => {
     liveDashboard.growthGrouping = event.target.value || 'month';
