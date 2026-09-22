@@ -584,6 +584,7 @@
 
     <!-- Actions -->
     <div class="header-actions">
+      <a class="export-btn" id="loginLink" href="/login.html" hidden style="text-decoration:none;">🔐 تسجيل الدخول</a>
       <button class="notif-btn" title="الإشعارات" onclick="toggleNotif()">
         🔔<span class="notif-dot"></span>
       </button>
@@ -689,6 +690,7 @@
           <span class="section-sub" id="dashboardDate">15\09\2026</span>
         </div>
         <div class="section-sub" id="dashboardFilterSummary">كل المناطق | كل المندوبين | كل الفئات</div>
+        <div class="section-sub" id="dashboardError" role="alert" aria-live="polite" hidden></div>
       </div>
     </div>
     <div class="kpi-grid" id="kpiGrid">
@@ -815,6 +817,10 @@
               <div class="churn-dot"></div>
               <span class="churn-badge-text">0 تحذيرات</span>
             </div>
+            <select id="growthGroupingFilter" class="filter-select" aria-label="تجميع النمو">
+              <option value="month">حسب الشهور</option>
+              <option value="year">حسب السنوات</option>
+            </select>
             <button class="tbl-export-btn" onclick="exportGrowthChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
         </div>
@@ -823,7 +829,10 @@
         </div>
         <div style="margin-top:4px;">
           <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px;">عملاء في خطر الإلغاء</div>
-          <div class="churn-list" id="churnList"></div>
+          <div class="churn-list">
+            <select id="churnCustomerFilter" class="filter-select" aria-label="عملاء في خطر الإلغاء"></select>
+            <div id="churnDetail" class="churn-item low">اختر عميلًا لعرض تفاصيل التراجع</div>
+          </div>
         </div>
       </div>
 
@@ -855,7 +864,10 @@
           <div class="chart-bar" style="background:linear-gradient(to bottom,#a855f7,#6366f1);"></div>
           <div class="chart-title">أداء مندوبي المبيعات</div>
         </div>
-        <span style="font-size:11px;color:var(--text3);">نسبة تحقيق الهدف الشهري</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:var(--text3);">نسبة تحقيق الهدف الشهري</span>
+          <button class="tbl-export-btn" onclick="exportSalesRepsToExcel()" title="تصدير أداء المندوبين إلى Excel">📥 Excel</button>
+        </div>
       </div>
       <div class="rep-table-wrap">
         <table class="rep-table" id="repList">
@@ -1559,7 +1571,7 @@ document.addEventListener('DOMContentLoaded', () => { document.getElementById('g
   const brdPeriod = row => { const date=new Date(`${row.date}T00:00:00`); return `Q${Math.floor(date.getMonth()/3)+1}`; };
   const brdSourceRows = () => {
     if (brdState.source !== 'salesOrder' || brdState.salesOrderStatus === 'all') return brdLedger;
-    return brdLedger.filter((row, index) => (index % 2 === 0) === (brdState.salesOrderStatus === 'post'));
+    return brdLedger.filter(row => row.sourceStatus === brdState.salesOrderStatus);
   };
   const brdDateText = () => {
     const f=brdState.filters, now=new Date(), day=Number(f.day)||now.getDate(), month=Number(f.month)||now.getMonth()+1, year=Number(f.year)||now.getFullYear();
@@ -1569,7 +1581,7 @@ document.addEventListener('DOMContentLoaded', () => { document.getElementById('g
   function brdFiltered() {
     const f=brdState.filters, sourceRows=brdSourceRows();
     const rows=sourceRows.filter(row => { const date=new Date(`${row.date}T00:00:00`); const text=[row.region,row.city,row.rep,row.customer,row.category,row.product].join(' '); return (!f.region||row.region===f.region)&&(!f.city||row.city===f.city)&&(!f.rep||row.rep===f.rep)&&(!f.customer||row.customer===f.customer)&&(!f.category||row.category===f.category)&&(!f.product||row.product===f.product)&&(!f.month||date.getMonth()+1===Number(f.month))&&(!f.year||date.getFullYear()===Number(f.year))&&(!f.period||brdPeriod(row)===f.period)&&(!f.day||date.getDate()===Number(f.day))&&(!f.from||row.date>=f.from)&&(!f.to||row.date<=f.to)&&(!f.query||text.includes(f.query)); });
-    return rows.length ? rows : sourceRows;
+    return rows;
   }
   function brdFill(id, values, label) { const el=document.getElementById(id); if(!el)return; const current=el.value; el.innerHTML=`<option value="">${label}</option>`+values.map(value=>`<option value="${value}">${value}</option>`).join(''); if(values.includes(current))el.value=current; }
   function brdSyncOptions() {

@@ -584,6 +584,7 @@
 
     <!-- Actions -->
     <div class="header-actions">
+      <a class="export-btn" id="loginLink" href="/login.html" hidden style="text-decoration:none;">🔐 تسجيل الدخول</a>
       <button class="notif-btn" title="الإشعارات" onclick="toggleNotif()">
         🔔<span class="notif-dot"></span>
       </button>
@@ -689,6 +690,7 @@
           <span class="section-sub" id="dashboardDate">15\09\2026</span>
         </div>
         <div class="section-sub" id="dashboardFilterSummary">كل المناطق | كل المندوبين | كل الفئات</div>
+        <div class="section-sub" id="dashboardError" role="alert" aria-live="polite" hidden></div>
       </div>
     </div>
     <div class="kpi-grid" id="kpiGrid">
@@ -815,6 +817,10 @@
               <div class="churn-dot"></div>
               <span class="churn-badge-text">0 تحذيرات</span>
             </div>
+            <select id="growthGroupingFilter" class="filter-select" aria-label="تجميع النمو">
+              <option value="month">حسب الشهور</option>
+              <option value="year">حسب السنوات</option>
+            </select>
             <button class="tbl-export-btn" onclick="exportGrowthChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
         </div>
@@ -823,7 +829,10 @@
         </div>
         <div style="margin-top:4px;">
           <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px;">عملاء في خطر الإلغاء</div>
-          <div class="churn-list" id="churnList"></div>
+          <div class="churn-list">
+            <select id="churnCustomerFilter" class="filter-select" aria-label="عملاء في خطر الإلغاء"></select>
+            <div id="churnDetail" class="churn-item low">اختر عميلًا لعرض تفاصيل التراجع</div>
+          </div>
         </div>
       </div>
 
@@ -855,7 +864,10 @@
           <div class="chart-bar" style="background:linear-gradient(to bottom,#a855f7,#6366f1);"></div>
           <div class="chart-title">أداء مندوبي المبيعات</div>
         </div>
-        <span style="font-size:11px;color:var(--text3);">نسبة تحقيق الهدف الشهري</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:var(--text3);">نسبة تحقيق الهدف الشهري</span>
+          <button class="tbl-export-btn" onclick="exportSalesRepsToExcel()" title="تصدير أداء المندوبين إلى Excel">📥 Excel</button>
+        </div>
       </div>
       <div class="rep-table-wrap">
         <table class="rep-table" id="repList">
@@ -993,675 +1005,6 @@
 </main>
 
 <!-- ═══════════════════════════ SCRIPTS ═══════════════════════════ -->
-<script type="text/legacy">
-/* The dashboard is driven by one transaction collection and one state object. */
-const dashboardState = {
-  filters: { region:'', city:'', rep:'', customer:'', category:'', product:'', month:'', year:'', period:'', day:'', query:'' },
-  dateMode:'شهري', comparison:'previousPeriod', groupBy:['region'], productMetric:'amount', repTarget:'monthly', repSort:'desc', sort:{ key:'net', dir:'desc' },
-  expanded:new Set(), charts:{ growth:null, regional:null, product:null }
-};
-
-const transactionSeed = [
-  ['2026-01-08','القاهرة الكبرى','مدينة نصر','أحمد محمد السيد','شركة النور للأثاث','الإسفنج','إسفنج طبي فاخر ١٠سم',420,18,36000,3600],
-  ['2026-01-19','القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','شركة الشروق للأثاث','المراتب','مرتبة بونيل ٢٠٠×١٨٠',260,12,29000,2900],
-  ['2026-02-11','الإسكندرية','المنتزه','محمود علي حسن','بيت الراحة للمفروشات','المراتب','مرتبة بونيل ٢٠٠×١٨٠',310,15,34500,2760],
-  ['2026-03-17','الدلتا الشرقية','المنصورة','سامي وليد فاروق','شركة النيل للمفروشات','الإسفنج','إسفنج عالي الكثافة ٨سم',380,21,31800,3180],
-  ['2026-04-06','القاهرة الكبرى','مصر الجديدة','حسين عادل منصور','مجمع الديار للفرش','الأرضيات','أرضية بازلت ٤مم',180,10,22500,1800],
-  ['2026-05-21','الدلتا الغربية','طنطا','هشام نبيل صلاح','مؤسسة الغربية التجارية','الأرضيات','أرضية PVC ٢مم',240,14,19800,1584],
-  ['2026-06-14','الصعيد الأعلى','أسيوط','خالد إبراهيم عمر','مصنع الأمل للمفروشات','مواد لاصقة','غراء قماش مطاطي',150,8,14600,730],
-  ['2026-07-09','القناة','الإسماعيلية','يوسف طارق رمضان','شركة القناة للتجارة','الإكسسوارات','وسادة قياسي',210,16,17200,860],
-  ['2026-08-23','الإسكندرية','وسط البلد','محمود علي حسن','مؤسسة الإسكندر التجارية','الإسفنج','إسفنج رقيق ٣سم',290,13,21400,1712],
-  ['2026-09-12','القاهرة الكبرى','مدينة نصر','أحمد محمد السيد','مؤسسة الهلال التجارية','الإسفنج','إسفنج طبي فاخر ١٠سم',340,17,30100,3010],
-  ['2026-10-18','الدلتا الشرقية','المنصورة','سامي وليد فاروق','مجمع الأثاث الحديث','المراتب','مرتبة ذاكرة شكل',230,11,27400,2740],
-  ['2026-11-04','الصعيد الأدنى','المنيا','عمر عبد الرحمن','متجر الصعيد للأثاث','المراتب','مرتبة بونيل ٢٠٠×١٨٠',190,9,21800,2180],
-  ['2026-12-15','القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','مصنع الأمل للمفروشات','الأرضيات','أرضية بازلت ٤مم',270,15,26500,2120],
-  ['2025-12-15','القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','مصنع الأمل للمفروشات','الأرضيات','أرضية بازلت ٤مم',220,12,21200,1696]
-].map((r, i) => ({ date:r[0], region:r[1], city:r[2], rep:r[3], customer:r[4], category:r[5], product:r[6], invoices:r[7], grossQty:r[8], gross:r[9], collected:r[10], returnedQty:Math.round(r[8] * .08), returns:Math.round(r[9] * .06), id:'tx-'+i }));
-
-const dashboardData = transactionSeed;
-const legacyMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-const money = value => `${Math.round(value).toLocaleString('ar-EG')} ج.م`;
-const number = value => Math.round(value).toLocaleString('ar-EG');
-const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] || 0), 0);
-const metric = rows => ({ invoices:sum(rows,'invoices'), grossQty:sum(rows,'grossQty'), returnedQty:sum(rows,'returnedQty'), netQty:sum(rows,'grossQty')-sum(rows,'returnedQty'), gross:sum(rows,'gross'), returns:sum(rows,'returns'), net:sum(rows,'gross')-sum(rows,'returns'), collected:sum(rows,'collected') });
-const metricWithDebt = rows => { const m = metric(rows); m.outstanding = m.net - m.collected; m.rate = m.net ? m.collected / m.net * 100 : 0; return m; };
-
-function rowsForState() {
-  const f = dashboardState.filters;
-  return dashboardData.filter(row => (!f.region || row.region === f.region) && (!f.city || row.city === f.city) && (!f.rep || row.rep === f.rep) && (!f.customer || row.customer === f.customer) && (!f.category || row.category === f.category) && (!f.product || row.product === f.product) && (!f.month || new Date(row.date).getMonth()+1 === +f.month) && (!f.year || new Date(row.date).getFullYear() === +f.year) && (!f.period || (f.period[0] === 'Q' ? `Q${Math.floor(new Date(row.date).getMonth()/3)+1}` : new Date(row.date).getDay() === +f.period)) && (!f.day || new Date(row.date).getDate() === +f.day) && (!f.query || [row.region,row.city,row.rep,row.customer,row.category,row.product].join(' ').includes(f.query)));
-}
-
-function optionValues(rows, key) { return [...new Set(rows.map(row => row[key]))].sort(); }
-function fillSelect(id, values, allLabel) { const select = document.getElementById(id); if (!select) return; const current = select.value; select.innerHTML = `<option value="">${allLabel}</option>` + values.map(value => `<option value="${value}">${value}</option>`).join(''); if (values.includes(current)) select.value = current; }
-function syncFilters() {
-  const f = dashboardState.filters, rows = dashboardData.filter(row => (!f.region || row.region === f.region) && (!f.rep || row.rep === f.rep) && (!f.category || row.category === f.category));
-  fillSelect('cityFilter', optionValues(rows,'city'), 'جميع المدن'); fillSelect('customerFilter', optionValues(rows,'customer'), 'جميع العملاء'); fillSelect('productFilter', optionValues(rows,'product'), 'جميع المنتجات');
-  fillSelect('monthFilter', months.map((_, i) => i+1), 'كل الأشهر'); fillSelect('yearFilter', [...new Set(dashboardData.map(row => new Date(row.date).getFullYear()))], 'كل السنوات');
-  fillSelect('periodFilter', f.year || f.month ? ['Q1','Q2','Q3','Q4','0','1','2','3','4','5','6'] : [], 'كل الفترات'); fillSelect('dayFilter', optionValues(rows,'date').map(date => new Date(date).getDate()), 'كل الأيام');
-  Object.keys(f).forEach(key => { const el = document.getElementById(key === 'category' ? 'catFilter' : key === 'query' ? 'globalSearch' : key === 'period' ? 'periodFilter' : key+'Filter'); if (el && el.value !== f[key]) el.value = f[key]; });
-}
-
-function renderKpis() {
-  const m = metricWithDebt(rowsForState()), cards = [['إجمالي المبيعات','الإيرادات المعتمدة',m.gross,'💰'],['إجمالي المرتجعات','إشعارات الخصم',m.returns,'↩'],['صافي المبيعات','الإيرادات',m.net,'◈'],['المبالغ المحصلة','إجمالي التحصيل',m.collected,'💳'],['المديونية القائمة','الرصيد المتأخر',m.outstanding,'⚠'],['عدد الفواتير المعتمدة','فواتير Posted',m.invoices,'▤'],['عدد المرتجعات','أوامر الإرجاع',Math.max(1,Math.ceil(m.invoices*.06)),'↩'],['متوسط قيمة الفاتورة','المتوسط الفاتوري',m.invoices ? m.net/m.invoices : 0,'📊']];
-  document.getElementById('kpiGrid').innerHTML = cards.map((c,i) => { const isCount=i===5||i===6; return `<div class="kpi-card ${i===1||i===4?'red':i===3?'green':'blue'}"><div class="kpi-top"><div><div class="kpi-sub">${c[1]}</div><div class="kpi-title">${c[0]}</div></div><div class="kpi-icon">${c[3]}</div></div><div class="kpi-value">${isCount?number(c[2]):money(c[2])}</div><div class="kpi-full">${isCount?number(c[2])+' سجل':number(c[2])+' جنيه مصري'}</div><div class="kpi-footer"><div class="kpi-trend ${i===4?'down':'up'}">↑ ${m.net ? (m.rate).toFixed(1) : '0'}٪ <span style="font-weight:400;color:var(--text3);">من الفترة الحالية</span></div><div class="kpi-extra">ديناميكي</div></div></div>`; }).join('');
-}
-const topProds = [
-  { name:'إسفنج طبي فاخر ١٠سم', cat:'الإسفنج',   rev:2345, growth:22.5 },
-  { name:'مرتبة بونيل ٢٠٠×١٨٠',  cat:'المراتب',   rev:1987, growth:18.3 },
-  { name:'أرضية بازلت ٤مم',       cat:'الأرضيات',  rev:1456, growth:15.7 },
-  { name:'إسفنج عالي الكثافة ٨سم', cat:'الإسفنج', rev:1234, growth:11.2 },
-  { name:'مرتبة ذاكرة شكل',       cat:'المراتب',   rev:1098, growth:28.6 },
-];
-const botProds = [
-  { name:'غراء قماش مطاطي',      cat:'مواد لاصقة', rev:189, growth:-12.3 },
-  { name:'إسفنج رقيق ٣سم',       cat:'الإسفنج',    rev:213, growth:-8.7  },
-  { name:'أرضية PVC ٢مم',        cat:'الأرضيات',   rev:267, growth:-5.2  },
-  { name:'وسادة قياسي',          cat:'المراتب',    rev:312, growth:-3.8  },
-  { name:'غراء الخشب السريع',    cat:'مواد لاصقة', rev:345, growth:-1.4  },
-];
-const months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-const revenue  = [1.89,2.10,1.98,2.35,2.58,2.23,1.95,2.78,2.65,2.89,3.10,3.35];
-const collected= [1.51,1.68,1.58,1.88,2.06,1.78,1.56,2.22,2.12,2.31,2.48,2.68];
-const regions = [
-  { name:'القاهرة',   rev:4.568, col:3.654, out:0.914 },
-  { name:'الإسكندرية',rev:2.346, col:1.877, out:0.469 },
-  { name:'الدلتا الشرقية', rev:1.877, col:1.501, out:0.375 },
-  { name:'الدلتا الغربية', rev:1.654, col:1.323, out:0.331 },
-  { name:'الصعيد الأعلى',  rev:0.988, col:0.790, out:0.198 },
-  { name:'الصعيد الأدنى',  rev:0.877, col:0.701, out:0.175 },
-  { name:'القناة',    rev:0.654, col:0.524, out:0.131 },
-  { name:'سيناء',     rev:0.432, col:0.346, out:0.086 },
-];
-const churnData = [
-  { name:'مؤسسة الصعيد للأثاث', date:'منذ ٤٥ يوماً', risk:'high',   riskAr:'عالي'  },
-  { name:'متجر الأفق للديكور',   date:'منذ ٣٨ يوماً', risk:'high',   riskAr:'عالي'  },
-  { name:'شركة التميز للأثاث',   date:'منذ ٣٢ يوماً', risk:'medium', riskAr:'متوسط' },
-  { name:'مجمع النخبة للمفروشات',date:'منذ ٢٩ يوماً', risk:'medium', riskAr:'متوسط' },
-  { name:'بيت التصميم الحديث',   date:'منذ ٢٦ يوماً', risk:'low',    riskAr:'منخفض' },
-];
-const salesReps = [
-  { name:'سامي وليد فاروق', region:'الدلتا الشرقية', pct:121, kpi:'متفوق', target:980000, actualAmount:1185800, theoreticalAmount:1160000, actualPercentage:121, theoreticalPercentage:118, gapTheoreticalPercentage:3, gapPercentage:21 },
-  { name:'أحمد محمد السيد', region:'القاهرة الكبرى', pct:112, kpi:'متفوق', target:1100000, actualAmount:1232000, theoreticalAmount:1200000, actualPercentage:112, theoreticalPercentage:109, gapTheoreticalPercentage:3, gapPercentage:12 },
-  { name:'حسين عادل منصور', region:'القاهرة الجديدة', pct:109, kpi:'متفوق', target:870000, actualAmount:948300, theoreticalAmount:925000, actualPercentage:109, theoreticalPercentage:106, gapTheoreticalPercentage:3, gapPercentage:9 },
-  { name:'عمر عبد الرحمن', region:'الصعيد الأدنى', pct:104, kpi:'محقق للهدف', target:760000, actualAmount:790400, theoreticalAmount:775000, actualPercentage:104, theoreticalPercentage:102, gapTheoreticalPercentage:2, gapPercentage:4 },
-  { name:'محمود علي حسن', region:'الإسكندرية', pct:98, kpi:'قريب من الهدف', target:920000, actualAmount:901600, theoreticalAmount:910000, actualPercentage:98, theoreticalPercentage:99, gapTheoreticalPercentage:-1, gapPercentage:-2 },
-  { name:'كريم سعيد الشافعي', region:'الجيزة', pct:95, kpi:'قريب من الهدف', target:818000, actualAmount:777100, theoreticalAmount:800000, actualPercentage:95, theoreticalPercentage:98, gapTheoreticalPercentage:-3, gapPercentage:-5 },
-  { name:'هشام نبيل صلاح', region:'الدلتا الغربية', pct:93, kpi:'دون الهدف', target:740000, actualAmount:688200, theoreticalAmount:720000, actualPercentage:93, theoreticalPercentage:97, gapTheoreticalPercentage:-4, gapPercentage:-7 },
-  { name:'خالد إبراهيم عمر', region:'الصعيد الأعلى', pct:87, kpi:'دون الهدف', target:690000, actualAmount:600300, theoreticalAmount:660000, actualPercentage:87, theoreticalPercentage:96, gapTheoreticalPercentage:-9, gapPercentage:-13 },
-  { name:'أيمن رفعت ناصر', region:'الصحراء الغربية', pct:82, kpi:'دون الهدف', target:620000, actualAmount:508400, theoreticalAmount:590000, actualPercentage:82, theoreticalPercentage:95, gapTheoreticalPercentage:-13, gapPercentage:-18 },
-  { name:'يوسف طارق رمضان', region:'القناة', pct:76, kpi:'يحتاج متابعة', target:580000, actualAmount:440800, theoreticalAmount:540000, actualPercentage:76, theoreticalPercentage:93, gapTheoreticalPercentage:-17, gapPercentage:-24 },
-  { name:'طارق حمدي الزيات', region:'المنيا وأسيوط', pct:73, kpi:'يحتاج متابعة', target:540000, actualAmount:394200, theoreticalAmount:510000, actualPercentage:73, theoreticalPercentage:94, gapTheoreticalPercentage:-21, gapPercentage:-27 },
-  { name:'مصطفى جمال الدين', region:'سيناء والبحر الأحمر', pct:68, kpi:'يحتاج تدخل', target:500000, actualAmount:340000, theoreticalAmount:475000, actualPercentage:68, theoreticalPercentage:95, gapTheoreticalPercentage:-27, gapPercentage:-32 },
-];
-
-// ────────────────────────────────────────────────────────────
-// CHART.JS GLOBAL DEFAULTS
-// ────────────────────────────────────────────────────────────
-Chart.defaults.font.family = "'Cairo', sans-serif";
-Chart.defaults.color = '#94a3b8';
-Chart.defaults.plugins.legend.labels.boxWidth = 10;
-Chart.defaults.plugins.legend.labels.padding  = 12;
-
-// ────────────────────────────────────────────────────────────
-// PRODUCTS CHART
-// ────────────────────────────────────────────────────────────
-let prodChart, prodMode = 'top';
-
-function buildProductChart(mode) {
-  const data = mode === 'top' ? topProds : botProds;
-  const bgColors = mode === 'top'
-    ? data.map((_,i) => `hsl(${210+i*12},75%,${62-i*4}%)`)
-    : data.map((_,i) => `hsl(${0+i*10},70%,${55-i*3}%)`);
-
-  const ctx = document.getElementById('productChart').getContext('2d');
-  if (prodChart) prodChart.destroy();
-  prodChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: data.map(p => p.name.length > 16 ? p.name.slice(0,16)+'…' : p.name),
-      datasets: [{ data: data.map(p => p.rev), backgroundColor: bgColors, borderRadius: 6, maxBarThickness: 22 }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: {
-        callbacks: {
-          label: ctx => ` ${ctx.raw.toLocaleString('ar-EG')} ألف ج.م`
-        }
-      }},
-      scales: {
-        x: { grid: { color:'rgba(51,65,85,0.4)' }, ticks: { callback: v => v+'ك' } },
-        y: { grid: { display: false }, ticks: { mirror: true, padding: 4 } }
-      }
-    }
-  });
-
-  // Growth row
-  const row = document.getElementById('prodGrowthRow');
-  row.innerHTML = data.map(p => `
-    <div style="text-align:center;flex:1;min-width:0;">
-      <div style="font-size:11px;font-weight:800;color:${p.growth>=0?'#4ade80':'#f87171'};">
-        ${p.growth>=0?'+':''}${p.growth}%
-      </div>
-      <div style="font-size:9px;color:var(--text3);margin-top:2px;">${p.cat}</div>
-    </div>
-  `).join('');
-}
-
-function switchProductChart(mode, btn) {
-  prodMode = mode;
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.remove('active-top','active-bot');
-  });
-  btn.classList.add(mode === 'top' ? 'active-top' : 'active-bot');
-  document.getElementById('prodChartTitle').textContent =
-    mode === 'top' ? 'أفضل المنتجات مبيعاً' : 'أقل المنتجات مبيعاً';
-  buildProductChart(mode);
-}
-
-// ────────────────────────────────────────────────────────────
-// GROWTH / CHURN CHART
-// ────────────────────────────────────────────────────────────
-function buildGrowthChart() {
-  const ctx = document.getElementById('growthChart').getContext('2d');
-  const gradRev = ctx.createLinearGradient(0,0,0,200);
-  gradRev.addColorStop(0,'rgba(59,130,246,0.35)');
-  gradRev.addColorStop(1,'rgba(59,130,246,0.01)');
-  const gradCol = ctx.createLinearGradient(0,0,0,200);
-  gradCol.addColorStop(0,'rgba(34,197,94,0.35)');
-  gradCol.addColorStop(1,'rgba(34,197,94,0.01)');
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: months,
-      datasets: [
-        { label:'الإيرادات', data: revenue,   borderColor:'#3b82f6', backgroundColor: gradRev,
-          fill:true, tension:.4, pointRadius:3, pointBackgroundColor:'#3b82f6', pointHoverRadius:5 },
-        { label:'المحصّل',   data: collected, borderColor:'#22c55e', backgroundColor: gradCol,
-          fill:true, tension:.4, pointRadius:3, pointBackgroundColor:'#22c55e', pointHoverRadius:5 },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position:'bottom' }, tooltip: {
-        callbacks: { label: ctx => ` ${ctx.raw} مليون ج.م` }
-      }},
-      scales: {
-        x: { grid: { color:'rgba(51,65,85,0.4)' } },
-        y: { grid: { color:'rgba(51,65,85,0.4)' }, ticks: { callback: v => v+'م' } }
-      }
-    }
-  });
-
-  // Churn List
-  const list = document.getElementById('churnList');
-  list.innerHTML = churnData.map(c => `
-    <div class="churn-item ${c.risk}">
-      <div class="churn-item-left">
-        <div class="churn-item-dot"></div>
-        <span class="churn-item-name">${c.name}</span>
-      </div>
-      <div class="churn-item-right">
-        <span class="churn-item-date">${c.date}</span>
-        <span class="churn-risk">${c.riskAr}</span>
-      </div>
-    </div>
-  `).join('');
-}
-
-// ────────────────────────────────────────────────────────────
-// REGIONAL CHART
-// ────────────────────────────────────────────────────────────
-function buildRegionalChart() {
-  const ctx = document.getElementById('regionalChart').getContext('2d');
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: regions.map(r => r.name),
-      datasets: [
-        { label:'الإيرادات', data: regions.map(r=>r.rev), backgroundColor:'rgba(59,130,246,0.75)', borderRadius:4, maxBarThickness:22 },
-        { label:'المحصّل',   data: regions.map(r=>r.col), backgroundColor:'rgba(34,197,94,0.75)',  borderRadius:4, maxBarThickness:22 },
-        { label:'المديونية', data: regions.map(r=>r.out), backgroundColor:'rgba(239,68,68,0.75)',  borderRadius:4, maxBarThickness:22 },
-      ]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins: { legend: { position:'bottom' }, tooltip: {
-        callbacks: { label: ctx => ` ${ctx.raw} مليون ج.م` }
-      }},
-      scales: {
-        x: { grid:{display:false}, ticks:{font:{size:9}} },
-        y: { grid:{ color:'rgba(51,65,85,0.4)' }, ticks:{ callback: v => v+'م' } }
-      }
-    }
-  });
-
-  // Mini cards (top 4)
-  const grid = document.getElementById('regionMiniGrid');
-  grid.innerHTML = regions.slice(0,4).map(r => {
-    const rate = Math.round(r.col/r.rev*100);
-    const good = rate>=80;
-    return `
-      <div class="region-mini">
-        <div>
-          <div class="region-mini-name">${r.name}</div>
-          <div class="region-mini-val">${r.rev.toFixed(2)} م.ج</div>
-        </div>
-        <div class="region-mini-rate ${good?'good':'bad'}">${rate}%</div>
-      </div>
-    `;
-  }).join('');
-}
-
-// ────────────────────────────────────────────────────────────
-// SALES REP PERFORMANCE
-// ────────────────────────────────────────────────────────────
-function buildRepList() {
-  const sorted = [...salesReps].sort((a,b) => b.pct - a.pct);
-  const list = document.querySelector('#repList tbody');
-  list.innerHTML = sorted.map((r,i) => {
-    const cls = r.pct>=100 ? 'over' : r.pct>=80 ? 'ok' : 'low';
-    return `
-      <tr class="rep-main-row" data-rep-id="${i}" onclick="toggleRepRow('${i}')">
-        <td><span class="rep-toggle">▼</span><span class="rep-rank">#${i+1}</span> <span class="rep-name">${r.name}</span><div class="rep-region">${r.region}</div></td>
-        <td><span class="rep-bar-track"><span class="rep-bar-fill ${cls}" style="display:block;width:${Math.min(r.pct,100)}%;"></span></span><span class="rep-pct ${cls}">${r.pct}%</span></td>
-        <td class="rep-value">${money(r.actualAmount)}</td>
-        <td class="rep-explanation">اضغط لعرض تفاصيل الأداء</td>
-      </tr>
-      <tr class="rep-detail-row" data-rep-detail="${i}">
-        <td colspan="4"><div class="rep-detail-panel">
-          <div class="rep-detail-card kpi"><span class="rep-detail-label">مؤشر الأداء</span><span class="rep-detail-value">${r.kpi}</span></div>
-          <div class="rep-detail-card target"><span class="rep-detail-label">الهدف</span><span class="rep-detail-value">${money(r.target)}</span></div>
-          <div class="rep-detail-card"><span class="rep-detail-label">المبلغ الفعلي المنجز</span><span class="rep-detail-value">${money(r.actualAmount)}</span></div>
-          <div class="rep-detail-card"><span class="rep-detail-label">المبلغ المحصل</span><span class="rep-detail-value">${money(r.collectedAmount || r.actualAmount - (r.actualAmount * 0.2))}</span></div>
-          <div class="rep-detail-card gap"><span class="rep-detail-label">الباقي</span><span class="rep-detail-value">${money((r.actualAmount || 0) - (r.collectedAmount || r.actualAmount * 0.8))}</span></div>
-          <div class="rep-detail-card"><span class="rep-detail-label">النسبة الفعلية</span><span class="rep-detail-value">${r.actualPercentage}%</span></div>
-          <div class="rep-detail-card"><span class="rep-detail-label">النسبة النظرية</span><span class="rep-detail-value">${r.theoreticalPercentage}%</span></div>
-          <div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة النظرية</span><span class="rep-detail-value">${r.gapTheoreticalPercentage >= 0 ? '+' : ''}${r.gapTheoreticalPercentage}%</span></div>
-          <div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة الفعلية</span><span class="rep-detail-value">${r.gapPercentage >= 0 ? '+' : ''}${r.gapPercentage}%</span></div>
-        </div></td>
-      </tr>
-    `;
-  }).join('');
-}
-
-// ────────────────────────────────────────────────────────────
-// DRILL-DOWN TABLE DATA
-// ────────────────────────────────────────────────────────────
-const tableData = [
-  { id:'cairo', level:'state', icon:'🏙️', name:'القاهرة الكبرى', invoices:1248, qty:48200, value:'٤٬٥٦٧٬٨٩٠', collected:'٣٬٦٥٤٬٣١٢', outstanding:'٩١٣٬٥٧٨', rate:80,
-    children: [
-      { id:'cairo-nasr', level:'city', icon:'📍', name:'مدينة نصر', invoices:423, qty:16800, value:'١٬٥٦٧٬٨٩٠', collected:'١٬٢٥٤٬٣١٢', outstanding:'٣١٣٬٥٧٨', rate:80,
-        children: [
-          { id:'cn-c1', level:'cust', icon:'🏢', name:'شركة النور للأثاث',      rep:'أحمد محمد السيد',   invoices:87, qty:3400, value:'٤٢٣٬٠٠٠', collected:'٣٣٨٬٤٠٠', outstanding:'٨٤٬٦٠٠', rate:80 },
-          { id:'cn-c2', level:'cust', icon:'🏢', name:'مؤسسة الهلال التجارية', rep:'حسين عادل منصور',   invoices:65, qty:2600, value:'٣١٢٬٠٠٠', collected:'٢٤٩٬٦٠٠', outstanding:'٦٢٬٤٠٠', rate:80 },
-          { id:'cn-c3', level:'cust', icon:'🏢', name:'متجر الأثاث الملكي',    rep:'أحمد محمد السيد',   invoices:54, qty:2100, value:'٢٦٧٬٠٠٠', collected:'١٦٠٬٢٠٠', outstanding:'١٠٦٬٨٠٠', rate:60, warn:true },
-        ]
-      },
-      { id:'cairo-helio', level:'city', icon:'📍', name:'مصر الجديدة', invoices:312, qty:12400, value:'١٬١٢٣٬٠٠٠', collected:'٨٩٨٬٤٠٠', outstanding:'٢٢٤٬٦٠٠', rate:80,
-        children: [
-          { id:'ch-c1', level:'cust', icon:'🏢', name:'مجمع الديار للفرش',    rep:'حسين عادل منصور',  invoices:98, qty:3900, value:'٤٦٧٬٠٠٠', collected:'٣٧٣٬٦٠٠', outstanding:'٩٣٬٤٠٠', rate:80 },
-          { id:'ch-c2', level:'cust', icon:'🏢', name:'بيت الراحة للمراتب',   rep:'كريم سعيد الشافعي', invoices:72, qty:2800, value:'٣٣٤٬٠٠٠', collected:'٢٦٧٬٢٠٠', outstanding:'٦٦٬٨٠٠', rate:80 },
-        ]
-      },
-      { id:'cairo-giza', level:'city', icon:'📍', name:'الجيزة', invoices:513, qty:19000, value:'١٬٨٧٧٬٠٠٠', collected:'١٬٥٠١٬٦٠٠', outstanding:'٣٧٥٬٤٠٠', rate:80,
-        children: [
-          { id:'cg-c1', level:'cust', icon:'🏢', name:'شركة الشروق للأثاث',  rep:'كريم سعيد الشافعي', invoices:143, qty:5600, value:'٦٧٨٬٠٠٠', collected:'٥٤٢٬٤٠٠', outstanding:'١٣٥٬٦٠٠', rate:80 },
-          { id:'cg-c2', level:'cust', icon:'🏢', name:'مصنع الأمل للمفروشات',rep:'كريم سعيد الشافعي', invoices:98,  qty:3800, value:'٤٥٦٬٠٠٠', collected:'٣٦٤٬٨٠٠', outstanding:'٩١٬٢٠٠',  rate:80 },
-        ]
-      },
-    ]
-  },
-  { id:'alex', level:'state', icon:'🏛️', name:'الإسكندرية', invoices:687, qty:24600, value:'٢٬٣٤٥٬٦٧٨', collected:'١٬٨٧٦٬٥٤٣', outstanding:'٤٦٩٬١٣٥', rate:80,
-    children: [
-      { id:'alex-mont', level:'city', icon:'📍', name:'المنتزه', invoices:234, qty:8400, value:'٧٩٨٬٠٠٠', collected:'٦٣٨٬٤٠٠', outstanding:'١٥٩٬٦٠٠', rate:80,
-        children: [
-          { id:'am-c1', level:'cust', icon:'🏢', name:'بيت الراحة للمفروشات', rep:'محمود علي حسن', invoices:87, qty:3100, value:'٣٥٦٬٠٠٠', collected:'٢٨٤٬٨٠٠', outstanding:'٧١٬٢٠٠', rate:80 },
-          { id:'am-c2', level:'cust', icon:'🏢', name:'معرض الأفق للأثاث',    rep:'محمود علي حسن', invoices:67, qty:2400, value:'٢٣٤٬٠٠٠', collected:'١٨٧٬٢٠٠', outstanding:'٤٦٬٨٠٠', rate:80 },
-        ]
-      },
-      { id:'alex-dt', level:'city', icon:'📍', name:'وسط البلد', invoices:453, qty:16200, value:'١٬٥٤٧٬٦٧٨', collected:'١٬٢٣٨٬١٤٣', outstanding:'٣٠٩٬٥٣٥', rate:80,
-        children: [
-          { id:'adt-c1', level:'cust', icon:'🏢', name:'مؤسسة الإسكندر التجارية', rep:'محمود علي حسن', invoices:123, qty:4400, value:'٤٥٦٬٠٠٠', collected:'٣٦٤٬٨٠٠', outstanding:'٩١٬٢٠٠', rate:80 },
-        ]
-      },
-    ]
-  },
-  { id:'delta', level:'state', icon:'🌾', name:'الدلتا الشرقية', invoices:534, qty:19800, value:'١٬٨٧٦٬٥٤٣', collected:'١٬٥٠١٬٢٣٤', outstanding:'٣٧٥٬٣٠٩', rate:80,
-    children: [
-      { id:'delta-mans', level:'city', icon:'📍', name:'المنصورة', invoices:267, qty:9900, value:'٩٤٥٬٠٠٠', collected:'٧٥٦٬٠٠٠', outstanding:'١٨٩٬٠٠٠', rate:80,
-        children: [
-          { id:'dm-c1', level:'cust', icon:'🏢', name:'شركة النيل للمفروشات', rep:'سامي وليد فاروق', invoices:98, qty:3600, value:'٤٣٢٬٠٠٠', collected:'٣٤٥٬٦٠٠', outstanding:'٨٦٬٤٠٠', rate:80 },
-          { id:'dm-c2', level:'cust', icon:'🏢', name:'مجمع الأثاث الحديث',   rep:'سامي وليد فاروق', invoices:76, qty:2800, value:'٣١٢٬٠٠٠', collected:'٢٤٩٬٦٠٠', outstanding:'٦٢٬٤٠٠', rate:80 },
-        ]
-      },
-    ]
-  },
-  { id:'upper', level:'state', icon:'🗿', name:'الصعيد الأعلى', invoices:312, qty:10400, value:'٩٨٧٬٦٥٤', collected:'٧٩٠٬١٢٣', outstanding:'١٩٧٬٥٣١', rate:80,
-    children: [
-      { id:'upper-ass', level:'city', icon:'📍', name:'أسيوط', invoices:156, qty:5200, value:'٤٩٨٬٠٠٠', collected:'٣٩٨٬٤٠٠', outstanding:'٩٩٬٦٠٠', rate:80,
-        children: [
-          { id:'ua-c1', level:'cust', icon:'🏢', name:'مؤسسة الصعيد للأثاث', rep:'طارق حمدي الزيات', invoices:78, qty:2600, value:'٢٦٧٬٠٠٠', collected:'١٣٣٬٥٠٠', outstanding:'١٣٣٬٥٠٠', rate:50, warn:true },
-        ]
-      },
-      { id:'upper-luxor', level:'city', icon:'📍', name:'الأقصر', invoices:156, qty:5200, value:'٤٨٩٬٦٥٤', collected:'٣٩١٬٧٢٣', outstanding:'٩٧٬٩٣١', rate:80,
-        children: [
-          { id:'ul-c1', level:'cust', icon:'🏢', name:'معرض ريم للمفروشات', rep:'طارق حمدي الزيات', invoices:54, qty:1800, value:'٢٣٤٬٠٠٠', collected:'١٨٧٬٢٠٠', outstanding:'٤٦٬٨٠٠', rate:80 },
-        ]
-      },
-    ]
-  },
-  { id:'canal', level:'state', icon:'⛵', name:'القناة', invoices:198, qty:6900, value:'٦٥٤٬٣٢١', collected:'٥٢٣٬٤٥٧', outstanding:'١٣٠٬٨٦٤', rate:80,
-    children: [
-      { id:'canal-ism', level:'city', icon:'📍', name:'الإسماعيلية', invoices:98, qty:3400, value:'٣٤٥٬٠٠٠', collected:'٢٣٩٬٠٠٠', outstanding:'١٠٦٬٠٠٠', rate:69, warn:true,
-        children: [
-          { id:'ci-c1', level:'cust', icon:'🏢', name:'شركة القناة للتجارة', rep:'يوسف طارق رمضان', invoices:56, qty:1900, value:'٢٣٤٬٠٠٠', collected:'١٥٠٬٠٠٠', outstanding:'٨٤٬٠٠٠', rate:64, warn:true },
-        ]
-      },
-    ]
-  },
-];
-
-// ────────────────────────────────────────────────────────────
-// DRILL-DOWN TABLE RENDERING
-// ────────────────────────────────────────────────────────────
-let expandedIds = new Set();
-
-function rateClass(r) { return r>=80?'good':r>=70?'ok':'bad'; }
-
-function renderRow(item, depth) {
-  const indent = depth * 22;
-  const hasChildren = item.children && item.children.length > 0;
-  const isExpanded = expandedIds.has(item.id);
-  const expandIcon = !hasChildren ? '<div class="row-expand leaf">▶</div>'
-    : isExpanded ? '<div class="row-expand expanded" onclick="toggleRow(\''+item.id+'\',event)">▼</div>'
-    :              '<div class="row-expand expandable" onclick="toggleRow(\''+item.id+'\',event)">▶</div>';
-
-  const rc = rateClass(item.rate);
-  const warnIcon = item.warn ? '<span class="rate-alert" title="نسبة منخفضة">⚠️</span>' : '';
-
-  let rows = `<tr class="level-${item.level}" data-id="${item.id}">
-    <td>
-      <div class="row-indent" style="padding-right:${indent}px;">
-        ${expandIcon}
-        <span class="row-icon">${item.icon}</span>
-        <div>
-          <div class="row-name ${item.level}">${item.name}</div>
-          ${item.rep ? `<div class="row-subrep">👤 ${item.rep}</div>` : ''}
-        </div>
-      </div>
-    </td>
-    <td class="center val-normal">${item.invoices.toLocaleString('ar-EG')}</td>
-    <td class="center val-normal">${item.qty.toLocaleString('ar-EG')}</td>
-    <td class="left val-blue">${item.value} ج.م</td>
-    <td class="left val-green">${item.collected} ج.م</td>
-    <td class="left">${warnIcon}<span class="${item.warn?'val-red':'val-warn'}">${item.outstanding} ج.م</span></td>
-    <td class="center">
-      <div class="rate-wrap">
-        <div class="rate-bar"><div class="rate-fill ${rc}" style="width:${item.rate}%;"></div></div>
-        <span class="rate-pct ${rc}">${item.rate}٪</span>
-      </div>
-    </td>
-  </tr>`;
-
-  if (isExpanded && hasChildren) {
-    item.children.forEach(child => { rows += renderRow(child, depth+1); });
-  }
-  return rows;
-}
-
-function renderTable() {
-  const tbody = document.getElementById('drillTableBody');
-  tbody.innerHTML = tableData.map(row => renderRow(row, 0)).join('');
-}
-
-function toggleRow(id, e) {
-  e.stopPropagation();
-  if (expandedIds.has(id)) expandedIds.delete(id);
-  else expandedIds.add(id);
-  renderTable();
-}
-
-function expandAll() {
-  function collect(items) {
-    items.forEach(item => {
-      if (item.children) { expandedIds.add(item.id); collect(item.children); }
-    });
-  }
-  collect(tableData);
-  renderTable();
-}
-
-function collapseAll() { expandedIds.clear(); renderTable(); }
-
-// ────────────────────────────────────────────────────────────
-// HEADER INTERACTIONS
-// ────────────────────────────────────────────────────────────
-function setDateTab(btn, name) {
-  document.querySelectorAll('.date-tab').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('customDate').style.display = name === 'مخصص' ? 'flex' : 'none';
-}
-
-let viewIsQty = false;
-function toggleView() {
-  viewIsQty = !viewIsQty;
-  const track = document.getElementById('viewToggle');
-  const lv = document.getElementById('toggleLabelVal');
-  const lq = document.getElementById('toggleLabelQty');
-  track.classList.toggle('qty', viewIsQty);
-  lv.classList.toggle('active-val', !viewIsQty);
-  lv.classList.toggle('inactive-val', viewIsQty);
-  lq.classList.toggle('active-val', viewIsQty);
-  lq.classList.toggle('inactive-val', !viewIsQty);
-}
-
-function applyFilters() {
-  const region = document.getElementById('regionFilter').value;
-  const rep    = document.getElementById('repFilter').value;
-  const cat    = document.getElementById('catFilter').value;
-  const product = document.getElementById('productFilter').value;
-  const query = document.getElementById('globalSearch').value.trim();
-  document.querySelectorAll('#drillTableBody tr').forEach(row => {
-    const visible = !query || row.textContent.includes(query);
-    row.style.display = visible ? '' : 'none';
-  });
-  document.querySelector('.section-sub').textContent = `${region} | ${rep} | ${cat} | ${product}`;
-}
-
-function downloadCsv(filename, rows) {
-  const csv = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8' }));
-  link.download = filename; link.click(); URL.revokeObjectURL(link.href);
-}
-
-function exportTableCsv() {
-  const rows = [['الاسم','عدد الفواتير','الكمية','القيمة','المحصّل','المديونية','نسبة التحصيل']];
-  document.querySelectorAll('#drillTableBody tr:not([style*="display: none"])').forEach(row => rows.push([...row.cells].map(cell => cell.textContent.trim())));
-  downloadCsv('foam-sales-table.csv', rows);
-}
-
-function exportDashboard() {
-  downloadCsv('foam-sales-dashboard.csv', [['التقرير','القيمة'],['الإيرادات المعتمدة','١٢٬٣٤٥٬٦٧٨ ج.م'],['المحصّل','٩٬٨٧٦٬٥٤٣ ج.م'],['المديونية','٢٬٤٦٩٬١٣٥ ج.م'],['المرتجعات وإشعارات الخصم','١٨٧٬٤٥٠ ج.م']]);
-}
-
-function toggleNotif() {
-  alert('تحذيرات الإلغاء:\n\n⛔ مؤسسة الصعيد للأثاث — لم تطلب منذ ٤٥ يوماً\n⛔ متجر الأفق — لم يطلب منذ ٣٨ يوماً\n⚠️ شركة التميز — لم تطلب منذ ٣٢ يوماً');
-}
-
-// ────────────────────────────────────────────────────────────
-// CENTRAL RENDER PIPELINE
-// ────────────────────────────────────────────────────────────
-function setDateTab(button, mode) { dashboardState.dateMode = mode; document.querySelectorAll('.date-tab').forEach(tab => tab.classList.remove('active')); button.classList.add('active'); document.getElementById('customDate').style.display = mode === 'مخصص' ? 'flex' : 'none'; renderDashboard(); }
-function applyFilters() { const map = { region:'regionFilter', city:'cityFilter', rep:'repFilter', customer:'customerFilter', category:'catFilter', product:'productFilter', month:'monthFilter', year:'yearFilter', period:'periodFilter', day:'dayFilter' }; Object.entries(map).forEach(([key,id]) => { const el=document.getElementById(id); if (el) dashboardState.filters[key]=el.value; }); dashboardState.filters.query=document.getElementById('globalSearch').value.trim(); syncFilters(); renderDashboard(); }
-function toggleView() { document.getElementById('viewToggle').classList.toggle('qty'); dashboardState.productMetric = dashboardState.productMetric === 'amount' ? 'quantity' : 'amount'; renderProductReport(); }
-function groupedRows(rows) { const groups = new Map(); rows.forEach(row => { const key = dashboardState.groupBy.map(group => row[group]).join(' / '); if (!groups.has(key)) groups.set(key, { id:key, name:key, level:'state', icon:'◆', children:[] }); groups.get(key).children.push(row); }); return [...groups.values()]; }
-function tableCells(m) { return `<td class="center">${number(m.invoices)}</td><td class="center">${number(m.grossQty)}</td><td class="center">${number(m.returnedQty)}</td><td class="center">${number(m.netQty)}</td><td class="left val-blue">${money(m.gross)}</td><td class="left val-red">${money(m.returns)}</td><td class="left val-blue">${money(m.net)}</td><td class="left val-green">${money(m.collected)}</td><td class="left val-warn">${money(m.outstanding)}</td><td class="center">${m.rate.toFixed(1)}٪</td>`; }
-function renderTable() { const body=document.getElementById('drillTableBody'), rows=rowsForState(); const direction=dashboardState.sort.dir==='desc'?1:-1; const groups=groupedRows(rows).sort((a,b) => direction*((metricWithDebt(b.children)[dashboardState.sort.key]||0)-(metricWithDebt(a.children)[dashboardState.sort.key]||0))); body.innerHTML=groups.map(group => { const m=metricWithDebt(group.children), open=dashboardState.expanded.has(group.id); const children=open ? group.children.map(row => `<tr><td><span style="padding-right:28px;">└ ${row.customer} / ${row.product}</span></td>${tableCells(metricWithDebt([row]))}</tr>`).join('') : ''; return `<tr class="level-state" data-id="${group.id}" onclick="toggleRow('${group.id}',event)"><td><span class="row-expand ${open?'expanded':''}">${open?'▼':'▶'}</span> ${group.name}</td>${tableCells(m)}</tr>${children}`; }).join(''); const total=metricWithDebt(rows); const foot=document.querySelector('#drillTableBody').parentElement.querySelector('tfoot tr'); if (foot) foot.innerHTML=`<td>الإجمالي الكلي</td>${tableCells(total)}`; }
-function toggleRow(id,event) { if (event) event.stopPropagation(); dashboardState.expanded.has(id) ? dashboardState.expanded.delete(id) : dashboardState.expanded.add(id); renderTable(); }
-function expandAll() { groupedRows(rowsForState()).forEach(row => dashboardState.expanded.add(row.id)); renderTable(); }
-function collapseAll() { dashboardState.expanded.clear(); renderTable(); }
-function renderProductReport() { const rows=rowsForState(), grouped=new Map(); rows.forEach(row => { const key=dashboardState.groupBy.includes('category') && !dashboardState.groupBy.includes('product') ? row.category : row.product; const old=grouped.get(key)||{name:key,amount:0,quantity:0}; old.amount+=row.gross-row.returns; old.quantity+=row.grossQty-row.returnedQty; grouped.set(key,old); }); const items=[...grouped.values()].sort((a,b)=>b[dashboardState.productMetric==='amount'?'amount':'quantity']-a[dashboardState.productMetric==='amount'?'amount':'quantity']); buildProductChart = function() {}; if (dashboardState.charts.product) dashboardState.charts.product.destroy(); dashboardState.charts.product=new Chart(document.getElementById('productChart'),{type:'bar',data:{labels:items.slice(0,5).map(x=>x.name),datasets:[{data:items.slice(0,5).map(x=>x[dashboardState.productMetric==='amount'?'amount':'quantity']),backgroundColor:'#d6aa5b',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}}); const total=sum(items,dashboardState.productMetric==='amount'?'amount':'quantity')||1; document.getElementById('prodGrowthRow').innerHTML=items.slice(0,5).map(x=>`<div style="flex:1;text-align:center;color:var(--text3);font-size:10px;">${x.name}<br><strong style="color:var(--ks-kinpaku);">${(x[dashboardState.productMetric==='amount'?'amount':'quantity']/total*100).toFixed(1)}٪</strong></div>`).join(''); }
-function renderGrowthChart() { const rows=rowsForState(), labels=dashboardState.dateMode==='ربع سنوي'?['Q1','Q2','Q3','Q4']:dashboardState.dateMode==='يومي'?[...new Set(rows.map(r=>r.date.slice(8)))]:months; const values=labels.map(label=>metric(rows.filter(r=>dashboardState.dateMode==='ربع سنوي'?`Q${Math.floor(new Date(r.date).getMonth()/3)+1}`===label:dashboardState.dateMode==='يومي'?r.date.slice(8)===label:months[new Date(r.date).getMonth()]===label)).net); if(dashboardState.charts.growth) dashboardState.charts.growth.destroy(); dashboardState.charts.growth=new Chart(document.getElementById('growthChart'),{type:'line',data:{labels,datasets:[{label:'صافي المبيعات',data:values,borderColor:'#d6aa5b',backgroundColor:'rgba(214,170,91,.16)',fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false}}); }
-function renderRegionalChart() { const rows=rowsForState(), names=optionValues(rows,'region'), values=names.map(name=>metric(rows.filter(r=>r.region===name)).net); if(dashboardState.charts.regional) dashboardState.charts.regional.destroy(); dashboardState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:names,datasets:[{label:'صافي المبيعات',data:values,backgroundColor:'#70aaa2'}]},options:{responsive:true,maintainAspectRatio:false}}); document.getElementById('regionMiniGrid').innerHTML=names.slice(0,4).map((name,i)=>`<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${values[i].toLocaleString('ar-EG')}</div></div>`).join(''); }
-function renderRepReport() { const rows=rowsForState(), reps=optionValues(rows,'rep').map(name=>({name,metric:metricWithDebt(rows.filter(r=>r.rep===name)),region:rows.find(r=>r.rep===name)?.region||'كل المناطق'})).sort((a,b)=>dashboardState.repSort==='desc'?b.metric.net-a.metric.net:a.metric.net-b.metric.net); document.querySelector('#repList tbody').innerHTML=reps.map((r,i)=>`<tr><td><span class="rep-rank">#${i+1}</span> <span class="rep-name">${r.name}</span><div class="rep-region">${r.region}</div></td><td><span class="rep-bar-track"><span class="rep-bar-fill ok" style="display:block;width:${Math.min(r.metric.rate,100)}%;"></span></span><span class="rep-pct ok">${r.metric.rate.toFixed(1)}٪</span></td><td class="rep-value">${money(r.metric.net)}</td><td class="rep-explanation">صافي المبيعات ${money(r.metric.net)} ÷ عدد الفواتير ${number(r.metric.invoices)} = ${money(r.metric.invoices ? r.metric.net/r.metric.invoices : 0)} متوسط الفاتورة</td></tr>`).join(''); }
-function renderDashboard() { syncFilters(); renderKpis(); renderTable(); renderProductReport(); renderGrowthChart(); renderRegionalChart(); renderRepReport(); const sub=document.querySelector('.section-sub'); if(sub) sub.textContent=`${dashboardState.filters.region||'كل المناطق'} | ${dashboardState.filters.rep||'كل المندوبين'} | ${dashboardState.filters.category||'كل الفئات'}`; }
-function toggleRepSort() { dashboardState.repSort=dashboardState.repSort==='desc'?'asc':'desc'; renderRepReport(); }
-function setComparison(mode, button) { dashboardState.comparison=mode; document.querySelectorAll('#momTab,#yoyTab').forEach(tab=>tab.classList.remove('active-top')); if(button) button.classList.add('active-top'); renderDecisionReports(); }
-document.addEventListener('DOMContentLoaded', () => { document.getElementById('globalSearch').addEventListener('input',applyFilters); ['region','city','rep','customer','category','product','month','year','period','day'].forEach(key=>{const id=key==='category'?'catFilter':key+'Filter'; document.getElementById(id).addEventListener('change',applyFilters);}); document.getElementById('groupByFilter').addEventListener('change', event=>{dashboardState.groupBy=[...event.target.selectedOptions].map(option=>option.value); renderDashboard();}); document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const key=th.dataset.sort; dashboardState.sort.dir=dashboardState.sort.key===key&&dashboardState.sort.dir==='desc'?'asc':'desc'; dashboardState.sort.key=key; renderTable();})); renderDashboard(); });
-
-</script>
-<script type="text/legacy">
-/* BRD presentation data layer: deterministic records keep every visual tied to one ledger. */
-(function () {
-  const brdMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-  const brdProducts = [
-    ['الإسفنج','إسفنج طبي فاخر ١٠سم',920], ['الإسفنج','إسفنج عالي الكثافة ٨سم',760], ['الإسفنج','إسفنج رقيق ٣سم',420],
-    ['المراتب','مرتبة بونيل ٢٠٠×١٨٠',1180], ['المراتب','مرتبة ذاكرة شكل Sleep/Nile',1320], ['المراتب','مراتب Diora',1080],
-    ['الأرضيات','أرضية بازلت ٤مم',680], ['الأرضيات','أرضية PVC ٢مم',510],
-    ['مواد لاصقة','غراء قماش مطاطي',360], ['الإكسسوارات','وسائد قياسية',300]
-  ];
-  const brdTeams = [
-    ['القاهرة الكبرى','مدينة نصر','أحمد محمد السيد','شركة النور للأثاث'], ['القاهرة الكبرى','الجيزة','كريم سعيد الشافعي','مصنع الأمل للمفروشات'],
-    ['الإسكندرية','المنتزه','محمود علي حسن','بيت الراحة للمفروشات'], ['الدلتا الشرقية','المنصورة','سامي وليد فاروق','شركة النيل للمفروشات'],
-    ['الدلتا الغربية','طنطا','هشام نبيل صلاح','مؤسسة الغربية التجارية'], ['الصعيد الأعلى','أسيوط','خالد إبراهيم عمر','مؤسسة الصعيد للأثاث'],
-    ['الصعيد الأدنى','المنيا','عمر عبد الرحمن','متجر الصعيد للأثاث'], ['القناة','الإسماعيلية','يوسف طارق رمضان','شركة القناة للتجارة'],
-    ['القاهرة الكبرى','مصر الجديدة','حسين عادل منصور','مجمع الديار للفرش'], ['الدلتا الشرقية','الزقازيق','أيمن رفعت ناصر','مجمع الأثاث الحديث'],
-    ['الصعيد الأعلى','الأقصر','طارق حمدي الزيات','معرض ريم للمفروشات'], ['القناة','بورسعيد','مصطفى جمال الدين','شركة القناة المتحدة']
-  ];
-  const brdLedger = [];
-  brdTeams.forEach((team, teamIndex) => {
-    for (let month = 0; month < 12; month += 1) {
-      const product = brdProducts[(teamIndex * 2 + month) % brdProducts.length];
-      const units = 34 + ((teamIndex * 7 + month * 5) % 38);
-      const unitPrice = product[2] + ((month * 125) % 600);
-      const gross = units * unitPrice;
-      const returnedQty = (teamIndex + month) % 5 === 0 ? Math.max(1, Math.round(units * .07)) : Math.max(1, Math.round(units * .025));
-      const returns = Math.round(returnedQty * unitPrice);
-      const collected = Math.round((gross - returns) * (.68 + ((teamIndex + month) % 5) * .055));
-      brdLedger.push({
-        id:`brd-${teamIndex}-${month}`, date:`2026-${String(month + 1).padStart(2,'0')}-${String(6 + ((teamIndex * 3 + month) % 20)).padStart(2,'0')}`,
-        region:team[0], city:team[1], rep:team[2], customer:`${team[3]} ${month % 3 === 0 ? 'للتوريدات' : 'للمفروشات'}`,
-        category:product[0], product:product[1], invoices:5 + ((teamIndex + month) % 7), grossQty:units, gross, collected,
-        returnedQty, returns, returnOrders:returnedQty > 2 ? 1 : 0, target:Math.round(gross * (1.04 + (teamIndex % 4) * .04))
-      });
-    }
-  });
-  brdLedger.push({ id:'brd-prior-year', date:'2025-12-12', region:'القاهرة الكبرى', city:'الجيزة', rep:'كريم سعيد الشافعي', customer:'مصنع الأمل للمفروشات', category:'الأرضيات', product:'أرضية بازلت ٤مم', invoices:9, grossQty:58, gross:138000, collected:104000, returnedQty:3, returns:7200, returnOrders:1, target:142000 });
-
-  const brdState = { filters:{region:'',city:'',rep:'',customer:'',category:'',product:'',month:'',year:'',period:'',day:'',query:'',from:'',to:''}, mode:'شهري', metric:'amount', comparison:'previousPeriod', source:'postedInvoice', salesOrderStatus:'post', sortKey:'net', sortDirection:'desc', expanded:new Set(), repExpanded:new Set(), groupKeys:['region'], charts:{} };
-  const brdMoney = value => `${Math.round(value || 0).toLocaleString('ar-EG')} ج.م`;
-  const brdNum = value => Math.round(value || 0).toLocaleString('ar-EG');
-  const brdSum = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
-  const brdMetric = rows => { const gross=brdSum(rows,'gross'), returns=brdSum(rows,'returns'), net=gross-returns, collected=brdSum(rows,'collected'); return { invoices:brdSum(rows,'invoices'), grossQty:brdSum(rows,'grossQty'), returnedQty:brdSum(rows,'returnedQty'), netQty:brdSum(rows,'grossQty')-brdSum(rows,'returnedQty'), gross, returns, net, collected, outstanding:net-collected, rate:net ? collected/net*100 : 0, returnOrders:brdSum(rows,'returnOrders') }; };
-  const brdDistinct = (rows, key) => [...new Set(rows.map(row => row[key]))].sort((a,b) => String(a).localeCompare(String(b),'ar'));
-  const brdPeriod = row => { const date=new Date(`${row.date}T00:00:00`); return `Q${Math.floor(date.getMonth()/3)+1}`; };
-  const brdSourceRows = () => {
-    if (brdState.source !== 'salesOrder' || brdState.salesOrderStatus === 'all') return brdLedger;
-    return brdLedger.filter((row, index) => (index % 2 === 0) === (brdState.salesOrderStatus === 'post'));
-  };
-  const brdDateText = () => {
-    const f=brdState.filters, now=new Date(), day=Number(f.day)||now.getDate(), month=Number(f.month)||now.getMonth()+1, year=Number(f.year)||now.getFullYear();
-    return `${String(day).padStart(2,'0')}\\${String(month).padStart(2,'0')}\\${year}`;
-  };
-
-  function brdFiltered() {
-    const f=brdState.filters, sourceRows=brdSourceRows();
-    const rows=sourceRows.filter(row => { const date=new Date(`${row.date}T00:00:00`); const text=[row.region,row.city,row.rep,row.customer,row.category,row.product].join(' '); return (!f.region||row.region===f.region)&&(!f.city||row.city===f.city)&&(!f.rep||row.rep===f.rep)&&(!f.customer||row.customer===f.customer)&&(!f.category||row.category===f.category)&&(!f.product||row.product===f.product)&&(!f.month||date.getMonth()+1===Number(f.month))&&(!f.year||date.getFullYear()===Number(f.year))&&(!f.period||brdPeriod(row)===f.period)&&(!f.day||date.getDate()===Number(f.day))&&(!f.from||row.date>=f.from)&&(!f.to||row.date<=f.to)&&(!f.query||text.includes(f.query)); });
-    return rows.length ? rows : sourceRows;
-  }
-  function brdFill(id, values, label) { const el=document.getElementById(id); if(!el)return; const current=el.value; el.innerHTML=`<option value="">${label}</option>`+values.map(value=>`<option value="${value}">${value}</option>`).join(''); if(values.includes(current))el.value=current; }
-  function brdSyncOptions() {
-    const f=brdState.filters, available=brdSourceRows().filter(row=>(!f.region||row.region===f.region)&&(!f.rep||row.rep===f.rep)&&(!f.category||row.category===f.category));
-    brdFill('cityFilter',brdDistinct(available,'city'),'جميع المدن'); brdFill('customerFilter',brdDistinct(available,'customer'),'جميع العملاء'); brdFill('productFilter',brdDistinct(available,'product'),'جميع المنتجات');
-    brdFill('monthFilter',brdMonths.map((_,i)=>i+1),'كل الأشهر'); brdFill('yearFilter',[2026,2025],'كل السنوات'); brdFill('periodFilter',f.year||f.month?['Q1','Q2','Q3','Q4']:[],'كل الفترات'); brdFill('dayFilter',brdDistinct(available,'date').map(value=>Number(value.slice(8))),'كل الأيام');
-    const ids={region:'regionFilter',city:'cityFilter',rep:'repFilter',customer:'customerFilter',category:'catFilter',product:'productFilter',month:'monthFilter',year:'yearFilter',period:'periodFilter',day:'dayFilter'};
-    Object.entries(ids).forEach(([key,id])=>{const el=document.getElementById(id);if(el)el.value=f[key];});
-  }
-  function brdDestroy(id) { const canvas=document.getElementById(id); if(canvas){const existing=Chart.getChart(canvas);if(existing)existing.destroy();} }
-  function brdCurrentRows(rows) {
-    const f=brdState.filters, years=rows.map(row=>Number(row.date.slice(0,4)));
-    if(!years.length)return [];
-    const year=Number(f.year)||Math.max(...years);
-    let current=rows.filter(row=>Number(row.date.slice(0,4))===year);
-    if(f.from||f.to)return current.filter(row=>(!f.from||row.date>=f.from)&&(!f.to||row.date<=f.to));
-    if(f.month)current=current.filter(row=>Number(row.date.slice(5,7))===Number(f.month));
-    else if(brdState.mode==='شهري'){
-      const month=Math.max(...current.map(row=>Number(row.date.slice(5,7))));
-      current=current.filter(row=>Number(row.date.slice(5,7))===month);
-    } else if(brdState.mode==='أسبوعي'){
-      const weekOf=row=>Math.floor((new Date(`${row.date}T00:00:00`)-new Date(`${year}-01-01T00:00:00`))/86400000/7)+1;
-      const latest=Math.max(...current.map(weekOf));
-      current=current.filter(row=>weekOf(row)===latest);
-    }
-    if(f.period)current=current.filter(row=>brdPeriod(row)===f.period);
-    else if(brdState.mode==='ربع سنوي'){
-      const quarter=Math.max(...current.map(row=>Number(brdPeriod(row).slice(1))));
-      current=current.filter(row=>brdPeriod(row)===`Q${quarter}`);
-    }
-    if(f.day)current=current.filter(row=>Number(row.date.slice(8,10))===Number(f.day));
-    else if(brdState.mode==='يومي'){
-      const latest=Math.max(...current.map(row=>new Date(`${row.date}T00:00:00`).getTime()));
-      current=current.filter(row=>new Date(`${row.date}T00:00:00`).getTime()===latest);
-    }
-    return current.length?current:rows;
-  }
-  function brdStaticRows() { const f=brdState.filters, textFilter=f.query; return brdSourceRows().filter(row=>{const text=[row.region,row.city,row.rep,row.customer,row.category,row.product].join(' ');return (!f.region||row.region===f.region)&&(!f.city||row.city===f.city)&&(!f.rep||row.rep===f.rep)&&(!f.customer||row.customer===f.customer)&&(!f.category||row.category===f.category)&&(!f.product||row.product===f.product)&&(!textFilter||text.includes(textFilter));}); }
-  function brdComparisonRows(rows) { const current=brdCurrentRows(rows),dates=current.map(row=>new Date(`${row.date}T00:00:00`).getTime()); if(!dates.length)return []; const start=new Date(Math.min(...dates)),end=new Date(Math.max(...dates)); const priorStart=new Date(start),priorEnd=new Date(end); if(brdState.comparison==='samePeriodLastYear'){priorStart.setFullYear(priorStart.getFullYear()-1);priorEnd.setFullYear(priorEnd.getFullYear()-1);}else{const span=end-start+86400000;priorStart.setTime(start.getTime()-span);priorEnd.setTime(start.getTime()-86400000);} return brdStaticRows().filter(row=>{const time=new Date(`${row.date}T00:00:00`).getTime();return time>=priorStart.getTime()&&time<=priorEnd.getTime();}); }
-  function brdComparisonLabel() { return brdState.comparison==='samePeriodLastYear'?'نفس الفترة من العام الماضي':'الفترة السابقة'; }
-  function brdDelta(current,prior) { return prior ? (current-prior)/prior*100 : 0; }
-  function brdKpis() { const filtered=brdFiltered(),rows=brdCurrentRows(filtered),m=brdMetric(rows),prior=brdMetric(brdComparisonRows(filtered)),values=[m.gross,m.returns,m.net,m.collected,m.outstanding,m.invoices,m.returnOrders,m.invoices?m.net/m.invoices:0],keys=['gross','returns','net','collected','outstanding','invoices','returnOrders','net'],deltas=keys.map(key=>brdDelta(m[key],prior[key])),label=brdComparisonLabel(); document.getElementById('kpiGrid').innerHTML=[['إجمالي المبيعات','الإيرادات المعتمدة','💰'],['إجمالي المرتجعات','إشعارات الخصم','↩'],['صافي المبيعات','الإيرادات','◈'],['المبالغ المحصلة','إجمالي التحصيل','💳'],['المديونية القائمة','الرصيد المتأخر','⚠'],['عدد الفواتير المعتمدة','فواتير Posted','▤'],['عدد المرتجعات','أوامر الإرجاع','↩'],['متوسط قيمة الفاتورة','المتوسط الفاتوري','📊']].map((card,index)=>{const count=index===5||index===6,delta=deltas[index],trendClass=index===4?(delta<=0?'up':'down'):(delta>=0?'up':'down');return `<div class="kpi-card ${index===1||index===4?'red':index===3?'green':'blue'}"><div class="kpi-top"><div><div class="kpi-sub">${card[1]}</div><div class="kpi-title">${card[0]}</div></div><div class="kpi-icon">${card[2]}</div></div><div class="kpi-value">${count?brdNum(values[index]):brdMoney(values[index])}</div><div class="kpi-full">${count?brdNum(values[index])+' سجل':brdMoney(values[index])}</div><div class="kpi-footer"><div class="kpi-trend ${trendClass}">${delta>=0?'+':''}${delta.toFixed(1)}٪ <span style="font-weight:400;color:var(--text3);">${label}</span></div><div class="kpi-extra">بيانات حية</div></div></div>`;}).join(''); }
-  function brdPreviousPeriodRows() {
-    const f=brdState.filters, source=brdStaticRows(); let start,end;
-    const year=Number(f.year)||Math.max(...source.map(row=>Number(row.date.slice(0,4))));
-    if(f.from||f.to){ const current=brdCurrentRows(brdFiltered()); const dates=current.map(row=>new Date(`${row.date}T00:00:00`)); if(!dates.length)return []; end=new Date(Math.min(...dates)-86400000); start=new Date(end-(Math.max(...dates)-Math.min(...dates))); }
-    else if(f.month){ start=new Date(year,Number(f.month)-2,1); end=new Date(year,Number(f.month)-1,0); }
-    else if(f.period){ const quarter=Number(f.period.slice(1)), priorQuarter=quarter===1?4:quarter-1, priorYear=quarter===1?year-1:year; start=new Date(priorYear,(priorQuarter-1)*3,1); end=new Date(priorYear,priorQuarter*3,0); }
-    else if(f.day){ start=new Date(year,Number(f.month||1)-1,Number(f.day)-1); end=new Date(start); }
-    else { start=new Date(year-1,0,1); end=new Date(year-1,11,31); }
-    return source.filter(row=>{const date=new Date(`${row.date}T00:00:00`);return date>=start&&date<=end;});
-  }
-  function brdTableCells(m) { return `<td class="center">${brdNum(m.invoices)}</td><td class="center">${brdNum(m.grossQty)}</td><td class="center">${brdNum(m.returnedQty)}</td><td class="center">${brdNum(m.netQty)}</td><td class="left val-blue">${brdMoney(m.gross)}</td><td class="left val-red">${brdMoney(m.returns)}</td><td class="left val-blue">${brdMoney(m.net)}</td><td class="left val-green">${brdMoney(m.collected)}</td><td class="left val-warn">${brdMoney(m.outstanding)}</td><td class="center">${m.rate.toFixed(1)}٪</td>`; }
-  function brdTable() {
-    const rows=brdCurrentRows(brdFiltered()), priorRows=brdPreviousPeriodRows(), keys=brdState.groupKeys.length?brdState.groupKeys:['region'], direction=brdState.sortDirection==='desc'?-1:1;
-    const groupRows=(items,key)=>{const groups=new Map();items.forEach(row=>{const value=row[key];if(!groups.has(value))groups.set(value,[]);groups.get(value).push(row);});return [...groups.entries()].sort((a,b)=>direction*((brdMetric(a[1])[brdState.sortKey]||0)-(brdMetric(b[1])[brdState.sortKey]||0)));};
-    const renderLevel=(items,prior,level,path=[])=>groupRows(items,keys[level]).map(([name,group])=>{const groupPath=[...path,name],id=groupPath.join('\u001f'),open=brdState.expanded.has(id),priorGroup=prior.filter(row=>groupPath.every((value,index)=>row[keys[index]]===value)),children=level<keys.length-1&&open?renderLevel(group,priorGroup,level+1,groupPath):'',m=brdMetric(group);return `<tr class="level-state" onclick='brdToggle(${JSON.stringify(id)})'><td><span class="row-expand ${open?'expanded':''}">${level<keys.length-1?(open?'▼':'▶'):''}</span> ${name}</td>${brdTableCells(m,brdMetric(priorGroup).net)}</tr>${children}`;}).join('');
-    document.getElementById('drillTableBody').innerHTML=renderLevel(rows,priorRows,0);
-    const foot=document.querySelector('#drillTableBody').parentElement.querySelector('tfoot tr');if(foot)foot.innerHTML=`<td>الإجمالي الكلي</td>${brdTableCells(brdMetric(rows),brdMetric(priorRows).net)}`;
-  }
-  function brdProductsChart() { const rows=brdFiltered(), groups=new Map();rows.forEach(row=>{const key=row.product;const old=groups.get(key)||{name:key,category:row.category,amount:0,quantity:0};old.amount+=row.gross-row.returns;old.quantity+=row.grossQty-row.returnedQty;groups.set(key,old);});let items=[...groups.values()].sort((a,b)=>b[brdState.metric==='amount'?'amount':'quantity']-a[brdState.metric==='amount'?'amount':'quantity']);if(window.brdProductMode==='bottom')items=items.reverse();const visible=items.slice(0,7);window._lastProductChartData=visible.map(item=>({product:item.name,category:item.category,amount:item.amount,quantity:item.quantity}));brdDestroy('productChart');brdState.charts.product=new Chart(document.getElementById('productChart'),{type:'bar',data:{labels:visible.map(item=>item.name),datasets:[{data:visible.map(item=>item[brdState.metric==='amount'?'amount':'quantity']),backgroundColor:'#d6aa5b',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},onClick:(event,elements)=>{if(!elements.length)return;const item=visible[elements[0].index];const card=document.getElementById('productDetailCard');card.hidden=false;card.innerHTML=`<div class="chart-detail-title">${item.name}</div><div><div class="chart-detail-label">الكمية</div><div class="chart-detail-value">${brdNum(item.quantity)}</div></div><div><div class="chart-detail-label">القيمة (بالجنيه)</div><div class="chart-detail-value">${brdMoney(item.amount)}</div></div><div><div class="chart-detail-label">الفئة</div><div class="chart-detail-value">${item.category}</div></div>`;}}});const total=items.reduce((sum,item)=>sum+item.amount,0)||1;document.getElementById('prodGrowthRow').innerHTML=visible.map(item=>`<div style="flex:1;text-align:center;color:var(--text3);font-size:10px;">${item.name}<br><strong style="color:var(--ks-kinpaku);">${(item.amount/total*100).toFixed(1)}٪</strong></div>`).join(''); }
-  function brdGrowthChart() {
-    const filtered=brdFiltered(), dateOf=row=>new Date(`${row.date}T00:00:00`), selectedYear=Number(brdState.filters.year)||Math.max(...filtered.map(row=>dateOf(row).getFullYear())), rows=brdState.mode==='سنوي'?filtered:filtered.filter(row=>dateOf(row).getFullYear()===selectedYear);
-    const weekOfYear=row=>{const date=dateOf(row),first=new Date(date.getFullYear(),0,1);return Math.floor((date-first)/86400000/7)+1;};
-    let labels,bucket;
-    if(brdState.mode==='يومي'||brdState.mode==='مخصص'){ labels=[...new Set(rows.map(row=>row.date))].sort(); bucket=row=>row.date; }
-    else if(brdState.mode==='أسبوعي'){ const weeks=[...new Set(rows.filter(row=>dateOf(row).getFullYear()===selectedYear).map(weekOfYear))].sort((a,b)=>a-b); labels=weeks.map(week=>`الأسبوع ${week}`); bucket=row=>`الأسبوع ${weekOfYear(row)}`; }
-    else if(brdState.mode==='ربع سنوي'){ labels=['Q1','Q2','Q3','Q4']; bucket=brdPeriod; }
-    else if(brdState.mode==='سنوي'){ labels=[...new Set(rows.map(row=>row.date.slice(0,4)))].sort(); bucket=row=>row.date.slice(0,4); }
-    else { labels=brdMonths; bucket=row=>brdMonths[dateOf(row).getMonth()]; }
-    const values=labels.map(label=>brdMetric(rows.filter(row=>bucket(row)===label)).net), collected=labels.map(label=>brdMetric(rows.filter(row=>bucket(row)===label)).collected); window._lastGrowthChartData=labels.map((label,index)=>({period:label,netSales:values[index],collected:collected[index]}));
-    brdDestroy('growthChart');brdState.charts.growth=new Chart(document.getElementById('growthChart'),{type:'line',data:{labels,datasets:[{label:'صافي المبيعات',data:values,borderColor:'#d6aa5b',backgroundColor:'rgba(214,170,91,.16)',fill:true,tension:.35},{label:'المحصّل',data:collected,borderColor:'#70aaa2',backgroundColor:'rgba(112,170,162,.12)',fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
-  }
-  function brdGeoChart() { const rows=brdFiltered(),regions=brdDistinct(rows,'region'),metrics=regions.map(name=>brdMetric(rows.filter(row=>row.region===name)));window._lastGeoChartData=regions.map((name,index)=>({region:name,netSales:metrics[index].net,collected:metrics[index].collected,outstanding:metrics[index].outstanding}));brdDestroy('regionalChart');brdState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:regions,datasets:[{label:'صافي المبيعات',data:metrics.map(m=>m.net),backgroundColor:'#70aaa2'},{label:'المحصّلات',data:metrics.map(m=>m.collected),backgroundColor:'#d6aa5b'},{label:'المديونية القائمة',data:metrics.map(m=>m.outstanding),backgroundColor:'#b86b5c'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},onClick:(event,elements)=>{if(!elements.length)return;const index=elements[0].index,m=metrics[index],card=document.getElementById('regionDetailCard');card.hidden=false;card.innerHTML=`<div class="chart-detail-title">${regions[index]}</div><div><div class="chart-detail-label">المحصلات</div><div class="chart-detail-value">${brdMoney(m.collected)}</div></div><div><div class="chart-detail-label">المديونية القائمة</div><div class="chart-detail-value">${brdMoney(m.outstanding)}</div></div><div><div class="chart-detail-label">صافي المبيعات</div><div class="chart-detail-value">${brdMoney(m.net)}</div></div>`;}}});document.getElementById('regionMiniGrid').innerHTML=regions.slice(0,4).map((name,index)=>{const m=metrics[index];return `<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${brdMoney(m.net)}</div></div>`;}).join(''); }
-  function brdReps() { const rows=brdFiltered(), names=salesReps.map(rep=>({rep,rows:rows.filter(row=>row.rep===rep.name)})).sort((a,b)=>b.rep.actualPercentage-a.rep.actualPercentage);document.querySelector('#repList tbody').innerHTML=names.map((entry,index)=>{const rep=entry.rep,open=brdState.repExpanded.has(rep.name),cls=rep.actualPercentage>=100?'over':rep.actualPercentage>=80?'ok':'low';return `<tr class="rep-main-row ${open?'is-expanded':''}" data-rep-id="${rep.name}" onclick="toggleRepRow('${rep.name.replaceAll("'","\\'")}')"><td><span class="rep-toggle">▼</span><span class="rep-rank">#${index+1}</span> <span class="rep-name">${rep.name}</span><div class="rep-region">${rep.region}</div></td><td><span class="rep-bar-track"><span class="rep-bar-fill ${cls}" style="display:block;width:${Math.min(rep.actualPercentage,100)}%;"></span></span><span class="rep-pct ${cls}">${rep.actualPercentage}%</span></td><td class="rep-value">${brdMoney(rep.actualAmount)}</td><td class="rep-explanation">اضغط لعرض تفاصيل الأداء</td></tr><tr class="rep-detail-row ${open?'is-expanded':''}" data-rep-detail="${rep.name}"><td colspan="4"><div class="rep-detail-panel"><div class="rep-detail-card kpi"><span class="rep-detail-label">مؤشر الأداء</span><span class="rep-detail-value">${rep.kpi}</span></div><div class="rep-detail-card target"><span class="rep-detail-label">الهدف</span><span class="rep-detail-value">${brdMoney(rep.target)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">المبلغ الفعلي المنجز</span><span class="rep-detail-value">${brdMoney(rep.actualAmount)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">المبلغ النظري</span><span class="rep-detail-value">${brdMoney(rep.theoreticalAmount)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">النسبة الفعلية</span><span class="rep-detail-value">${rep.actualPercentage}%</span></div><div class="rep-detail-card"><span class="rep-detail-label">النسبة النظرية</span><span class="rep-detail-value">${rep.theoreticalPercentage}%</span></div><div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة النظرية</span><span class="rep-detail-value">${rep.gapTheoreticalPercentage>=0?'+':''}${rep.gapTheoreticalPercentage}%</span></div><div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة الفعلية</span><span class="rep-detail-value">${rep.gapPercentage>=0?'+':''}${rep.gapPercentage}%</span></div></div></td></tr>`;}).join(''); }
-  function brdReports() { const filtered=brdFiltered(),rows=brdCurrentRows(filtered),m=brdMetric(rows),prior=brdMetric(brdComparisonRows(filtered)),variance=key=>brdDelta(m[key],prior[key]);const matrix=[['إجمالي المبيعات','gross'],['إجمالي الكمية المباعة','grossQty'],['إجمالي المرتجعات','returns'],['إجمالي الكمية المرتجعة','returnedQty'],['صافي المبيعات','net'],['صافي الكمية المباعة','netQty'],['المستحق','net'],['المدفوع / المحصل','collected'],['المديونية المتبقية','outstanding'],['عدد الفواتير المعتمدة','invoices'],['عدد أوامر الارجاع','returnOrders']];document.querySelector('#comparisonMatrix thead tr').innerHTML='<th>المؤشر</th><th>الفترة الحالية</th><th>فترة المقارنة</th><th>نسبة الفرق / النمو</th>';document.querySelector('#comparisonMatrix tbody').innerHTML=matrix.map(([label,key])=>`<tr><td>${label}</td><td>${brdNum(m[key])}</td><td>${brdNum(prior[key])}</td><td class="${variance(key)>=0?'val-green':'val-red'}">${variance(key).toFixed(1)}٪</td></tr>`).join(''); }
-  function brdRender(){brdSyncOptions();brdKpis();brdTable();brdProductsChart();brdGrowthChart();brdGeoChart();brdReps();brdReports();const source=document.getElementById('dataSourceFilter'),status=document.getElementById('salesOrderStatusFilter');if(source){source.value=brdState.source;status.hidden=brdState.source!=='salesOrder';status.value=brdState.salesOrderStatus;}const date=document.getElementById('dashboardDate'),summary=document.getElementById('dashboardFilterSummary');if(date)date.textContent=brdDateText();if(summary)summary.textContent=`${brdState.filters.region||'كل المناطق'} | ${brdState.filters.rep||'كل المندوبين'} | ${brdState.filters.category||'كل الفئات'}`;window.__dashboardRows=()=>brdCurrentRows(brdFiltered());window.__dashboardLedger=brdSourceRows;window.refreshRepresentativeAmounts?.();window.renderReturnsAnalyticsTable?.();}
-  function brdApply(){const ids={region:'regionFilter',city:'cityFilter',rep:'repFilter',customer:'customerFilter',category:'catFilter',product:'productFilter',month:'monthFilter',year:'yearFilter',period:'periodFilter',day:'dayFilter'};Object.entries(ids).forEach(([key,id])=>{const el=document.getElementById(id);if(el)brdState.filters[key]=el.value;});brdState.source=document.getElementById('dataSourceFilter').value;brdState.salesOrderStatus=document.getElementById('salesOrderStatusFilter').value;brdState.comparison=document.getElementById('comparisonFilter').value;brdState.filters.query=document.getElementById('globalSearch').value.trim();brdState.filters.from=document.getElementById('dateFrom').value;brdState.filters.to=document.getElementById('dateTo').value;brdRender();}
-  window.toggleRepRow=id=>{const key=String(id);brdState.repExpanded.has(key)?brdState.repExpanded.delete(key):brdState.repExpanded.add(key);brdReps();};
-  window.brdToggle=id=>{brdState.expanded.has(id)?brdState.expanded.delete(id):brdState.expanded.add(id);brdTable();};
-  window.expandAll=()=>{const keys=brdState.groupKeys.length?brdState.groupKeys:['region'];const add=(rows,level,path=[])=>{if(level>=keys.length-1)return;const values=brdDistinct(rows,keys[level]);values.forEach(value=>{const next=[...path,value];brdState.expanded.add(next.join('\u001f'));add(rows.filter(row=>row[keys[level]]===value),level+1,next);});};add(brdFiltered(),0);brdTable();}; window.collapseAll=()=>{brdState.expanded.clear();brdTable();};
-  window.applyFilters=brdApply; window.toggleView=()=>{brdState.metric=brdState.metric==='amount'?'quantity':'amount';document.getElementById('viewToggle').classList.toggle('qty');brdProductsChart();};
-  window.setDateTab=(button,mode)=>{brdState.mode=mode;document.querySelectorAll('.date-tab').forEach(tab=>tab.classList.remove('active'));button.classList.add('active');document.getElementById('customDate').style.display=mode==='مخصص'?'flex':'none';brdRender();};
-  window.switchProductChart=(mode,button)=>{window.brdProductMode=mode;document.querySelectorAll('.tab-btn').forEach(tab=>tab.classList.remove('active-top','active-bot'));button.classList.add(mode==='top'?'active-top':'active-bot');brdProductsChart();};
-  window.setComparison=(mode,button)=>{brdState.comparison=mode;document.querySelectorAll('#momTab,#yoyTab').forEach(tab=>tab.classList.remove('active-top'));button.classList.add('active-top');brdReports();};
-  window.toggleRepSort=()=>{brdLedger.reverse();brdReps();};
-  window.exportDashboard=()=>{const m=brdMetric(brdFiltered());const rows=[['التقرير','القيمة'],['إجمالي المبيعات',brdMoney(m.gross)],['المرتجعات',brdMoney(m.returns)],['صافي المبيعات',brdMoney(m.net)],['المحصّل',brdMoney(m.collected)],['المديونية',brdMoney(m.outstanding)]];const csv=rows.map(row=>row.map(value=>`"${String(value).replaceAll('"','""')}"`).join(',')).join('\n');const link=document.createElement('a');link.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv'}));link.download='sheikh-foam-sales.csv';link.click();};
-  window.exportTableCsv=window.exportDashboard;
-  document.addEventListener('DOMContentLoaded',()=>{document.getElementById('globalSearch').addEventListener('input',brdApply);['region','city','rep','customer','category','product','month','year','period','day'].forEach(key=>document.getElementById(key==='category'?'catFilter':key+'Filter').addEventListener('change',brdApply));document.getElementById('dateFrom').addEventListener('change',brdApply);document.getElementById('dateTo').addEventListener('change',brdApply);document.getElementById('groupByFilter').addEventListener('change',event=>{const selected=[...event.target.selectedOptions].map(option=>option.value);brdState.groupKeys=[...brdState.groupKeys.filter(key=>selected.includes(key)),...selected.filter(key=>!brdState.groupKeys.includes(key))];if(!brdState.groupKeys.length)brdState.groupKeys=['region'];brdState.expanded.clear();brdTable();});document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{brdState.sortDirection=brdState.sortKey===th.dataset.sort&&brdState.sortDirection==='desc'?'asc':'desc';brdState.sortKey=th.dataset.sort;brdTable();}));brdRender();});
-})();
-</script>
-
 <script>
 /* ═══════════════════════════════════════════════════════════════════
    LIVE ODOO DASHBOARD CONTROLLER — SHEIKH FOAM FACTORY
@@ -1670,7 +1013,7 @@ document.addEventListener('DOMContentLoaded', () => { document.getElementById('g
 const liveDashboard = {
   data: null,
   filters: {
-    year: '2026',
+    year: String(new Date().getFullYear()),
     month: '',
     period: '',
     day: '',
@@ -1682,11 +1025,15 @@ const liveDashboard = {
     customer: '',
     category: '',
     product: '',
-    query: ''
+    query: '',
+    comparison: 'previousPeriod',
+    source: 'postedInvoice',
+    salesOrderStatus: 'all'
   },
-  mode: 'سنوي',
-  productMode: 'top', // 'top' | 'bot'
-  metric: 'amount',   // 'amount' | 'quantity'
+  mode: 'شهري',
+  growthGrouping: 'month',
+  productMode: 'top',
+  metric: 'amount',
   expandedReps: new Set(),
   expandedRegions: new Set(),
   charts: {
@@ -1696,11 +1043,12 @@ const liveDashboard = {
   }
 };
 
-const formatMoney = (val) => `${Math.round(Number(val) || 0).toLocaleString('ar-EG')} ج.م`;
+const formatMoney = (val) => (Math.round(Number(val) || 0).toLocaleString('ar-EG')) + ' ج.م';
 const formatNumber = (val) => Math.round(Number(val) || 0).toLocaleString('ar-EG');
 
-// ─── Fetch Overview from Live Odoo API ───
 async function loadLiveDashboard(forceRefresh = false) {
+  const errorNode = document.getElementById('dashboardError');
+  if (errorNode) errorNode.hidden = true;
   try {
     const params = new URLSearchParams();
     if (liveDashboard.filters.year) params.set('year', liveDashboard.filters.year);
@@ -1709,30 +1057,35 @@ async function loadLiveDashboard(forceRefresh = false) {
     if (liveDashboard.filters.day) params.set('day', liveDashboard.filters.day);
     if (liveDashboard.filters.startDate) params.set('startDate', liveDashboard.filters.startDate);
     if (liveDashboard.filters.endDate) params.set('endDate', liveDashboard.filters.endDate);
-    if (liveDashboard.filters.region) params.set('region', liveDashboard.filters.region);
-    if (liveDashboard.filters.rep) params.set('rep', liveDashboard.filters.rep);
-    if (liveDashboard.filters.customer) params.set('customer', liveDashboard.filters.customer);
-    if (liveDashboard.filters.product) params.set('product', liveDashboard.filters.product);
+    ['region', 'city', 'rep', 'customer', 'category', 'product', 'query', 'comparison', 'source', 'salesOrderStatus']
+      .forEach((key) => {
+        if (liveDashboard.filters[key]) params.set(key, liveDashboard.filters[key]);
+      });
     if (forceRefresh) params.set('refresh', '1');
 
-    const res = await fetch(`/api/dashboard/overview?${params.toString()}`);
+    const res = await fetch('/api/dashboard/overview?' + params.toString(), { credentials: 'same-origin' });
     if (!res.ok) {
       if (res.status === 401) {
         window.location.href = '/login.html';
         return;
       }
-      throw new Error(`API Error ${res.status}`);
+      const failure = await res.json().catch(() => ({}));
+      throw new Error(failure.error || 'تعذر تحميل بيانات لوحة التحكم');
     }
 
     const payload = await res.json();
     liveDashboard.data = payload;
     renderAllDashboardComponents();
   } catch (err) {
-    console.error('Error loading live dashboard:', err);
+    console.error('Error loading live dashboard:', err.message);
+    const errorNode = document.getElementById('dashboardError');
+    if (errorNode) {
+      errorNode.textContent = err.message || 'تعذر تحميل بيانات لوحة التحكم';
+      errorNode.hidden = false;
+    }
   }
 }
 
-// ─── Render All Dashboard Components ───
 function renderAllDashboardComponents() {
   if (!liveDashboard.data) return;
   const d = liveDashboard.data;
@@ -1746,25 +1099,25 @@ function renderAllDashboardComponents() {
   renderDrilldownTable(d.drilldown);
   renderReturnsTable(d.returns);
   renderChurnWarnings(d.churn);
-  renderComparisonMatrix(d.kpis);
+  renderComparisonMatrix(d.kpis, d.comparison?.kpis);
 
-  // Update summaries in header if present
+  renderDashboardDate(d.filters);
+
   const summaryNode = document.getElementById('dashboardFilterSummary');
   if (summaryNode) {
-    summaryNode.textContent = `${liveDashboard.filters.region || 'كل المناطق'} | ${liveDashboard.filters.rep || 'كل المندوبين'} | سنة ${liveDashboard.filters.year || '2026'}`;
+    summaryNode.textContent = (liveDashboard.filters.region || 'كل المناطق') + ' | ' + (liveDashboard.filters.rep || 'كل المندوبين') + ' | سنة ' + (liveDashboard.filters.year || '2026');
   }
 }
 
-// ─── 1. Filter Dropdowns ───
 function fillSelectOptions(id, items, defaultLabel, currentValue) {
   const select = document.getElementById(id);
   if (!select) return;
-  const opts = [`<option value="">${defaultLabel}</option>`];
+  const opts = ['<option value="">' + defaultLabel + '</option>'];
   (items || []).forEach(item => {
-    const val = typeof item === 'object' ? item.id || item.name : item;
-    const txt = typeof item === 'object' ? item.name : item;
+    const val = typeof item === 'object' ? (item.id ?? item.value ?? item.name) : item;
+    const txt = typeof item === 'object' ? (item.name ?? item.label ?? item.value) : item;
     const sel = String(val) === String(currentValue) ? 'selected' : '';
-    opts.push(`<option value="${String(val).replaceAll('"', '&quot;')}" ${sel}>${txt}</option>`);
+    opts.push('<option value="' + String(val).replaceAll('"', '&quot;') + '" ' + sel + '>' + txt + '</option>');
   });
   select.innerHTML = opts.join('');
 }
@@ -1774,21 +1127,34 @@ function renderFilterDropdowns(opts) {
   fillSelectOptions('regionFilter', opts.regions, 'جميع المناطق', liveDashboard.filters.region);
   fillSelectOptions('cityFilter', opts.cities, 'جميع المدن', liveDashboard.filters.city);
   fillSelectOptions('repFilter', opts.reps, 'جميع المندوبين', liveDashboard.filters.rep);
+  fillSelectOptions('customerFilter', opts.customers, 'جميع العملاء', liveDashboard.filters.customer);
+  fillSelectOptions('catFilter', opts.categories, 'جميع الفئات', liveDashboard.filters.category);
   fillSelectOptions('productFilter', opts.products, 'جميع المنتجات', liveDashboard.filters.product);
   fillSelectOptions('yearFilter', opts.years, 'كل السنوات', liveDashboard.filters.year);
+  fillSelectOptions('monthFilter', opts.months, 'كل الأشهر', liveDashboard.filters.month);
+  fillSelectOptions('periodFilter', opts.periods, 'كل الفترات', liveDashboard.filters.period);
+  fillSelectOptions('dayFilter', opts.days, 'كل الأيام', liveDashboard.filters.day);
 }
 
-// ─── 2. KPI Cards ───
+function renderDashboardDate(filters = {}) {
+  const node = document.getElementById('dashboardDate');
+  if (!node) return;
+  const format = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ar-EG') : '';
+  node.textContent = filters.start && filters.end
+    ? `${format(filters.start)} إلى ${format(filters.end)}`
+    : 'الفترة الحالية';
+}
+
 function renderKpis(kpis) {
   if (!kpis) return;
   const grid = document.getElementById('kpiGrid');
   if (!grid) return;
 
   const cards = [
-    { title: 'إجمالي المبيعات', sub: 'الإيرادات المعتمدة', val: formatMoney(kpis.gross), icon: '💰', color: 'blue', extra: `عدد الفواتير: ${formatNumber(kpis.invoicesCount)}`, trend: `${kpis.collectionRate}% تحصيل`, up: true },
-    { title: 'إجمالي المرتجعات', sub: 'إشعارات الخصم والدائن', val: formatMoney(kpis.returns), icon: '↩', color: 'red', extra: `عدد المرتجعات: ${formatNumber(kpis.returnsCount)}`, trend: 'مرتجعات معتمدة', up: false },
+    { title: 'إجمالي المبيعات', sub: 'الإيرادات المعتمدة', val: formatMoney(kpis.gross), icon: '💰', color: 'blue', extra: 'عدد الفواتير: ' + formatNumber(kpis.invoicesCount), trend: kpis.collectionRate + '% تحصيل', up: true },
+    { title: 'إجمالي المرتجعات', sub: 'إشعارات الخصم والدائن', val: formatMoney(kpis.returns), icon: '↩', color: 'red', extra: 'عدد المرتجعات: ' + formatNumber(kpis.returnsCount), trend: 'مرتجعات معتمدة', up: false },
     { title: 'صافي المبيعات', sub: 'المبيعات بعد الخصم', val: formatMoney(kpis.net), icon: '◈', color: 'blue', extra: 'الصافي الفعلي', trend: 'مبيعات حية', up: true },
-    { title: 'المبالغ المحصلة', sub: 'إجمالي النقدية المحصلة', val: formatMoney(kpis.collected), icon: '💳', color: 'green', extra: `نسبة التحصيل: ${kpis.collectionRate}%`, trend: `${kpis.collectionRate}%`, up: true },
+    { title: 'المبالغ المحصلة', sub: 'إجمالي النقدية المحصلة', val: formatMoney(kpis.collected), icon: '💳', color: 'green', extra: 'نسبة التحصيل: ' + kpis.collectionRate + '%', trend: kpis.collectionRate + '%', up: true },
     { title: 'المديونية القائمة', sub: 'الرصيد المتبقي لدى العملاء', val: formatMoney(kpis.outstanding), icon: '⚠', color: 'red', extra: 'مستحق السداد', trend: 'أرصدة آجلة', up: false },
     { title: 'عدد الفواتير المعتمدة', sub: 'فواتير Posted', val: formatNumber(kpis.invoicesCount), icon: '▤', color: 'blue', extra: 'فاتورة رسمية', trend: 'مكتمل', up: true },
     { title: 'عدد المرتجعات', sub: 'أوامر الإرجاع', val: formatNumber(kpis.returnsCount), icon: '↩', color: 'red', extra: 'إشعار دائن', trend: 'مرتجع', up: false },
@@ -1814,7 +1180,6 @@ function renderKpis(kpis) {
   `).join('');
 }
 
-// ─── 3. Charts ───
 function renderProductChart(charts) {
   const canvas = document.getElementById('productChart');
   if (!canvas || typeof Chart === 'undefined' || !charts) return;
@@ -1857,6 +1222,13 @@ function renderProductChart(charts) {
             label: (ctx) => liveDashboard.metric === 'amount' ? formatMoney(ctx.raw) : formatNumber(ctx.raw)
           }
         }
+      },
+      onClick: (_event, elements) => {
+        const product = products[elements[0]?.index];
+        const card = document.getElementById('productDetailCard');
+        if (!product || !card) return;
+        card.hidden = false;
+        card.textContent = `${product.name} | الكمية: ${formatNumber(product.quantity)} | صافي القيمة: ${formatMoney(product.amount)}`;
       }
     }
   });
@@ -1866,14 +1238,24 @@ function renderGrowthChart(charts) {
   const canvas = document.getElementById('growthChart');
   if (!canvas || typeof Chart === 'undefined' || !charts) return;
 
-  const labels = charts.months || ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  const netData = charts.monthlyNet || [];
-  const grossData = charts.monthlyGross || [];
+  const monthLabels = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const series = charts.growthTimeSeries?.[liveDashboard.growthGrouping] || [];
+  const fallback = (charts.months || monthLabels).map((label, index) => ({
+    label,
+    currentSales: charts.monthlyNet?.[index] || 0,
+    previousSales: charts.monthlyGross?.[index] || 0,
+    growthPercent: null
+  }));
+  const rows = series.length ? series : fallback;
+  const labels = rows.map(row => row.label);
+  const netData = rows.map(row => row.currentSales);
+  const comparisonData = rows.map(row => row.previousSales);
 
   window._lastGrowthChartData = labels.map((m, i) => ({
     'الشهر': m,
-    'إجمالي المبيعات': grossData[i] || 0,
-    'صافي المبيعات': netData[i] || 0
+    'الفترة الحالية': netData[i] || 0,
+    'الفترة السابقة': comparisonData[i] || 0,
+    'نسبة التغير': rows[i]?.growthPercent ?? null
   }));
 
   if (liveDashboard.charts.growth) {
@@ -1886,7 +1268,7 @@ function renderGrowthChart(charts) {
       labels,
       datasets: [
         {
-          label: 'صافي المبيعات',
+          label: 'مبيعات الفترة الحالية',
           data: netData,
           borderColor: '#d6aa5b',
           backgroundColor: 'rgba(214,170,91,0.16)',
@@ -1894,8 +1276,8 @@ function renderGrowthChart(charts) {
           tension: 0.35
         },
         {
-          label: 'إجمالي المبيعات',
-          data: grossData,
+          label: 'مبيعات الفترة السابقة',
+          data: comparisonData,
           borderColor: '#70aaa2',
           borderDash: [5, 5],
           tension: 0.35,
@@ -1910,10 +1292,11 @@ function renderGrowthChart(charts) {
         legend: { position: 'bottom' },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`
+            label: (ctx) => ctx.dataset.label + ': ' + formatMoney(ctx.raw)
           }
         }
-      }
+      },
+      onClick: () => {}
     }
   });
 }
@@ -1932,7 +1315,7 @@ function renderRegionalChart(charts) {
     'المبيعات': r.sales,
     'المحصل': r.collected,
     'المديونية': r.outstanding,
-    'نسبة التحصيل': `${r.rate}%`
+    'نسبة التحصيل': r.rate + '%'
   }));
 
   if (liveDashboard.charts.regional) {
@@ -1955,14 +1338,13 @@ function renderRegionalChart(charts) {
         legend: { position: 'bottom' },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`
+            label: (ctx) => ctx.dataset.label + ': ' + formatMoney(ctx.raw)
           }
         }
       }
     }
   });
 
-  // Mini regional grid
   const miniGrid = document.getElementById('regionMiniGrid');
   if (miniGrid) {
     miniGrid.innerHTML = regional.slice(0, 6).map(r => `
@@ -1975,7 +1357,6 @@ function renderRegionalChart(charts) {
   }
 }
 
-// ─── 4. Sales Reps Table & Expandable Detail Panels ───
 function toggleRepRow(name) {
   if (liveDashboard.expandedReps.has(name)) {
     liveDashboard.expandedReps.delete(name);
@@ -1988,12 +1369,14 @@ function toggleRepRow(name) {
 function renderRepsTable(reps) {
   const tbody = document.querySelector('#repList tbody');
   if (!tbody || !reps) return;
+  window._lastRepsData = reps;
 
   tbody.innerHTML = reps.map((rep, idx) => {
     const isExpanded = liveDashboard.expandedReps.has(rep.name);
     const cls = rep.percentage >= 100 ? 'over' : rep.percentage >= 80 ? 'ok' : 'low';
+    const escapedName = rep.name.replace(/'/g, "\\'");
     return `
-      <tr class="rep-main-row ${isExpanded ? 'is-expanded' : ''}" onclick="toggleRepRow('${rep.name.replaceAll("'", "\\'")}')">
+      <tr class="rep-main-row ${isExpanded ? 'is-expanded' : ''}" onclick="toggleRepRow('${escapedName}')">
         <td>
           <span class="rep-toggle">${isExpanded ? '▲' : '▼'}</span>
           <span class="rep-rank">#${idx + 1}</span>
@@ -2050,7 +1433,6 @@ function renderRepsTable(reps) {
   }).join('');
 }
 
-// ─── 5. Drilldown Hierarchy Table ───
 function toggleRegionDrill(regionName) {
   if (liveDashboard.expandedRegions.has(regionName)) {
     liveDashboard.expandedRegions.delete(regionName);
@@ -2067,8 +1449,9 @@ function renderDrilldownTable(drilldown) {
   const rows = [];
   drilldown.forEach(reg => {
     const isExpanded = liveDashboard.expandedRegions.has(reg.name);
+    const escapedReg = reg.name.replace(/'/g, "\\'");
     rows.push(`
-      <tr class="level-state" onclick="toggleRegionDrill('${reg.name.replaceAll("'", "\\'")}')">
+      <tr class="level-state" onclick="toggleRegionDrill('${escapedReg}')">
         <td>
           <div class="row-indent">
             <span class="row-expand expandable ${isExpanded ? 'expanded' : ''}">${isExpanded ? '▼' : '▶'}</span>
@@ -2129,10 +1512,10 @@ function renderDrilldownTable(drilldown) {
   tbody.innerHTML = rows.join('');
 }
 
-// ─── 6. Returns Analytics Table ───
 function renderReturnsTable(returns) {
   const tbody = document.getElementById('returnsTableBody');
   if (!tbody) return;
+  window._lastReturnsData = returns || [];
 
   if (!returns || !returns.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--ks-text-muted);padding:24px;">لا توجد مرتجعات مسجلة في الفترة المحددة</td></tr>';
@@ -2153,49 +1536,56 @@ function renderReturnsTable(returns) {
   `).join('');
 }
 
-// ─── 7. Customer Churn Warnings ───
 function renderChurnWarnings(churn) {
-  const container = document.getElementById('churnList');
+  const select = document.getElementById('churnCustomerFilter');
+  const detail = document.getElementById('churnDetail');
   const badgeTexts = document.querySelectorAll('.churn-badge-text');
+  const warnings = churn || [];
+  liveDashboard.churnWarnings = warnings;
 
   if (badgeTexts) {
-    badgeTexts.forEach(n => { n.textContent = `${(churn || []).length} تحذيرات`; });
+    badgeTexts.forEach(n => { n.textContent = warnings.length + ' تحذيرات'; });
   }
 
-  if (!container) return;
-
-  if (!churn || !churn.length) {
-    container.innerHTML = '<div class="churn-item low"><span class="churn-item-name">لا توجد تحذيرات حالياً</span></div>';
+  if (!select || !detail) return;
+  if (!warnings.length) {
+    select.innerHTML = '<option value="">لا توجد تحذيرات حالياً</option>';
+    detail.textContent = 'لا توجد تحذيرات تراجع تتجاوز العتبة المحددة';
     return;
   }
 
-  container.innerHTML = churn.map(c => `
-    <div class="churn-item ${c.risk === 'مرتفع' ? 'high' : 'medium'}">
-      <div class="churn-item-left">
-        <div class="churn-item-dot"></div>
-        <span class="churn-item-name">${c.name} (${c.state})</span>
-      </div>
-      <div class="churn-item-right">
-        <span class="churn-item-date">${formatMoney(c.outstanding)} متبقي</span>
-        <span class="churn-risk">${c.risk}</span>
-      </div>
-    </div>
-  `).join('');
+  select.innerHTML = warnings.map((warning, index) => `<option value="${index}">${warning.name} | ${warning.growthPercent}%</option>`).join('');
+  const renderWarning = () => {
+    const warning = warnings[Number(select.value) || 0];
+    if (!warning) return;
+    detail.className = `churn-item ${warning.risk === 'مرتفع' ? 'high' : 'medium'}`;
+    detail.textContent = `${warning.name} | ${warning.state} | الحالية: ${formatMoney(warning.currentSales)} | السابقة: ${formatMoney(warning.previousSales)} | التراجع: ${warning.growthPercent}% | الخطورة: ${warning.risk}`;
+  };
+  select.onchange = renderWarning;
+  renderWarning();
 }
 
-// ─── 8. Comparison Matrix ───
-function renderComparisonMatrix(kpis) {
+function renderComparisonMatrix(kpis, previous = {}) {
   const tbody = document.querySelector('#comparisonMatrix tbody');
   if (!tbody || !kpis) return;
+  window._lastComparisonData = { kpis, previous };
 
+  const change = (current, prior) => {
+    if (!prior) return current ? 'جديد' : '0.0%';
+    const value = ((current - prior) / Math.abs(prior)) * 100;
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+  };
   const rows = [
-    ['إجمالي المبيعات', formatMoney(kpis.gross), formatMoney(kpis.gross * 0.9), '+10.0%'],
-    ['إجمالي المرتجعات', formatMoney(kpis.returns), formatMoney(kpis.returns * 1.1), '-9.1%'],
-    ['صافي المبيعات', formatMoney(kpis.net), formatMoney(kpis.net * 0.89), '+11.2%'],
-    ['المبالغ المحصلة', formatMoney(kpis.collected), formatMoney(kpis.collected * 0.92), '+8.7%'],
-    ['المديونية القائمة', formatMoney(kpis.outstanding), formatMoney(kpis.outstanding * 0.95), '+5.3%'],
-    ['عدد الفواتير المعتمدة', formatNumber(kpis.invoicesCount), formatNumber(kpis.invoicesCount * 0.93), '+7.5%']
-  ];
+    ['إجمالي المبيعات', kpis.gross, previous.gross, true],
+    ['إجمالي المرتجعات', kpis.returns, previous.returns, true],
+    ['صافي المبيعات', kpis.net, previous.net, true],
+    ['المبالغ المحصلة', kpis.collected, previous.collected, true],
+    ['المديونية القائمة', kpis.outstanding, previous.outstanding, true],
+    ['عدد الفواتير المعتمدة', kpis.invoicesCount, previous.invoicesCount, false]
+  ].map(([label, current, prior, money]) => {
+    const delta = change(current, prior);
+    return [label, money ? formatMoney(current) : formatNumber(current), money ? formatMoney(prior) : formatNumber(prior), delta];
+  });
 
   tbody.innerHTML = rows.map(r => `
     <tr>
@@ -2207,18 +1597,27 @@ function renderComparisonMatrix(kpis) {
   `).join('');
 }
 
-// ─── UI Actions & Filter Handlers ───
 function applyLiveFilters() {
   const getVal = (id) => document.getElementById(id)?.value || '';
   liveDashboard.filters.region = getVal('regionFilter');
   liveDashboard.filters.city = getVal('cityFilter');
   liveDashboard.filters.rep = getVal('repFilter');
+  liveDashboard.filters.customer = getVal('customerFilter');
+  liveDashboard.filters.category = getVal('catFilter');
   liveDashboard.filters.product = getVal('productFilter');
-  liveDashboard.filters.year = getVal('yearFilter') || '2026';
+  liveDashboard.filters.year = getVal('yearFilter') || String(new Date().getFullYear());
   liveDashboard.filters.month = getVal('monthFilter');
   liveDashboard.filters.period = getVal('periodFilter');
   liveDashboard.filters.day = getVal('dayFilter');
-  liveDashboard.filters.query = getVal('globalSearch').trim();
+  liveDashboard.filters.query = (getVal('globalSearch') || '').trim();
+  liveDashboard.filters.startDate = getVal('dateFrom');
+  liveDashboard.filters.endDate = getVal('dateTo');
+  liveDashboard.filters.comparison = getVal('comparisonFilter') || 'previousPeriod';
+  liveDashboard.filters.source = getVal('dataSourceFilter') || 'postedInvoice';
+  liveDashboard.filters.salesOrderStatus = getVal('salesOrderStatusFilter') || 'all';
+
+  const statusControl = document.getElementById('salesOrderStatusFilter');
+  if (statusControl) statusControl.hidden = liveDashboard.filters.source !== 'salesOrder';
 
   loadLiveDashboard();
 }
@@ -2231,23 +1630,45 @@ function setDateTab(btn, mode) {
   const customDate = document.getElementById('customDate');
   if (customDate) customDate.style.display = mode === 'مخصص' ? 'flex' : 'none';
 
+  const today = new Date();
+  const asDate = (date) => date.toISOString().slice(0, 10);
+  liveDashboard.filters.startDate = '';
+  liveDashboard.filters.endDate = '';
   if (mode === 'يومي') {
-    const today = new Date();
     liveDashboard.filters.month = String(today.getMonth() + 1);
     liveDashboard.filters.day = String(today.getDate());
     liveDashboard.filters.period = '';
+  } else if (mode === 'أسبوعي') {
+    const start = new Date(today);
+    start.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    liveDashboard.filters.month = '';
+    liveDashboard.filters.day = '';
+    liveDashboard.filters.period = '';
+    liveDashboard.filters.startDate = asDate(start);
+    liveDashboard.filters.endDate = asDate(end);
   } else if (mode === 'شهري') {
     liveDashboard.filters.day = '';
     liveDashboard.filters.period = '';
+    liveDashboard.filters.month = String(today.getMonth() + 1);
   } else if (mode === 'ربع سنوي') {
     liveDashboard.filters.day = '';
     liveDashboard.filters.month = '';
-    liveDashboard.filters.period = 'Q3';
+    liveDashboard.filters.period = `Q${Math.floor(today.getMonth() / 3) + 1}`;
   } else if (mode === 'سنوي') {
     liveDashboard.filters.day = '';
     liveDashboard.filters.month = '';
     liveDashboard.filters.period = '';
   }
+
+  const sync = (id, value) => { const control = document.getElementById(id); if (control) control.value = value; };
+  sync('yearFilter', liveDashboard.filters.year);
+  sync('monthFilter', liveDashboard.filters.month);
+  sync('dayFilter', liveDashboard.filters.day);
+  sync('periodFilter', liveDashboard.filters.period);
+  sync('dateFrom', liveDashboard.filters.startDate);
+  sync('dateTo', liveDashboard.filters.endDate);
 
   loadLiveDashboard();
 }
@@ -2263,6 +1684,7 @@ function toggleView() {
   liveDashboard.metric = liveDashboard.metric === 'amount' ? 'quantity' : 'amount';
   const toggle = document.getElementById('viewToggle');
   if (toggle) toggle.classList.toggle('qty');
+  toggle?.setAttribute('aria-pressed', String(liveDashboard.metric === 'quantity'));
   renderProductChart(liveDashboard.data?.charts);
 }
 
@@ -2277,10 +1699,12 @@ function collapseAll() {
 }
 
 function toggleNotif() {
-  alert('جميع إشعارات ومؤشرات مصنع الشيخ للفوم متصلة مباشرة ومحدثة مع سيرفر Odoo.');
+  const warnings = liveDashboard.data?.churn || [];
+  alert(warnings.length
+    ? `يوجد ${warnings.length} تحذير متابعة مرتبط بالفلاتر الحالية.`
+    : 'لا توجد تحذيرات متابعة للفلاتر الحالية.');
 }
 
-// ─── Excel Exports via SheetJS ───
 function xlsxDownload(wb, filename) {
   if (typeof XLSX !== 'undefined') {
     XLSX.writeFile(wb, filename);
@@ -2289,12 +1713,36 @@ function xlsxDownload(wb, filename) {
   }
 }
 
+function createWorkbook(sheets) {
+  const wb = XLSX.utils.book_new();
+  Object.entries(sheets).forEach(([name, rows]) => {
+    if (rows?.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name.slice(0, 31));
+  });
+  return wb;
+}
+
 function exportDashboard() {
-  const table = document.querySelector('#drillTableBody')?.closest('table');
-  if (table) {
-    const wb = XLSX.utils.table_to_book(table, { sheet: 'المبيعات_التفصيلية' });
-    xlsxDownload(wb, 'تقرير-مبيعات-مصنع-الشيخ.xlsx');
-  }
+  const d = liveDashboard.data || {};
+  const kpis = d.kpis || {};
+  const rows = [
+    { المؤشر: 'إجمالي المبيعات', القيمة: kpis.gross },
+    { المؤشر: 'المرتجعات', القيمة: kpis.returns },
+    { المؤشر: 'صافي المبيعات', القيمة: kpis.net },
+    { المؤشر: 'المحصل', القيمة: kpis.collected },
+    { المؤشر: 'المديونية', القيمة: kpis.outstanding },
+    { المؤشر: 'عدد الفواتير', القيمة: kpis.invoicesCount }
+  ];
+  const wb = createWorkbook({
+    'الملخص': rows,
+    'النمو': window._lastGrowthChartData || [],
+    'المناطق': window._lastGeoChartData || [],
+    'المنتجات': window._lastProductChartData || [],
+    'المندوبون': window._lastRepsData || [],
+    'المرتجعات': window._lastReturnsData || [],
+    'التفصيلي': d.drilldown || [],
+    'العملاء': d.growthAnalysis?.customers || []
+  });
+  xlsxDownload(wb, 'تقرير-مبيعات-مصنع-الشيخ.xlsx');
 }
 
 function exportProductChartToExcel() {
@@ -2306,45 +1754,53 @@ function exportProductChartToExcel() {
   xlsxDownload(wb, 'أفضل-المنتجات.xlsx');
 }
 
+function exportSalesRepsToExcel() {
+  const rows = window._lastRepsData || liveDashboard.data?.reps || [];
+  if (!rows.length) return alert('لا توجد بيانات للمندوبين لتصديرها');
+  const wb = createWorkbook({ المندوبون: rows });
+  xlsxDownload(wb, 'أداء-مندوبي-المبيعات.xlsx');
+}
+
 function exportGrowthChartToExcel() {
   const rows = window._lastGrowthChartData || [];
   if (!rows.length) return alert('لا توجد بيانات لتصديرها');
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'النمو_الشهري');
+  const wb = createWorkbook({ النمو: rows, العملاء: liveDashboard.data?.growthAnalysis?.customers || [], المناطق: liveDashboard.data?.growthAnalysis?.regions || [] });
   xlsxDownload(wb, 'تقرير-النمو-الشهري.xlsx');
 }
 
 function exportGeoChartToExcel() {
   const rows = window._lastGeoChartData || [];
   if (!rows.length) return alert('لا توجد بيانات لتصديرها');
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'التوزيع_الجغرافي');
+  const wb = createWorkbook({ المناطق: rows, 'مقارنة المناطق': liveDashboard.data?.growthAnalysis?.regions || [] });
   xlsxDownload(wb, 'التوزيع-الجغرافي.xlsx');
 }
 
 function exportReturnsToExcel() {
-  const table = document.getElementById('returnsAnalyticsTable') || document.querySelector('#returnsTableBody')?.closest('table');
-  if (table) {
-    const wb = XLSX.utils.table_to_book(table, { sheet: 'المرتجعات' });
-    xlsxDownload(wb, 'تقرير-المرتجعات.xlsx');
-  }
+  const wb = createWorkbook({ المرتجعات: window._lastReturnsData || [] });
+  xlsxDownload(wb, 'تقرير-المرتجعات.xlsx');
 }
 
 function exportComparisonMatrixToExcel() {
-  const table = document.getElementById('comparisonMatrix');
-  if (table) {
-    const wb = XLSX.utils.table_to_book(table, { sheet: 'المقارنة_التحليلية' });
-    xlsxDownload(wb, 'تقرير-المقارنة.xlsx');
-  }
+  const comparison = liveDashboard.data?.growthAnalysis || {};
+  const wb = createWorkbook({ المناطق: comparison.regions || [], العملاء: comparison.customers || [], المؤشرات: [liveDashboard.data?.kpis || {}] });
+  xlsxDownload(wb, 'تقرير-المقارنة.xlsx');
 }
 
 function exportDetailTableToExcel() {
-  exportDashboard();
+  const wb = createWorkbook({ التفصيلي: liveDashboard.data?.drilldown || [], العملاء: liveDashboard.data?.growthAnalysis?.customers || [] });
+  xlsxDownload(wb, 'التقرير-التفصيلي.xlsx');
 }
 
-// ─── Expose Global Functions for Inline HTML Attributes ───
+function updateLoginLink() {
+  const link = document.getElementById('loginLink');
+  if (!link) return;
+  fetch('/api/me', { credentials: 'same-origin' })
+    .then(response => {
+      if (response.ok) link.hidden = true;
+    })
+    .catch(() => {});
+}
+
 window.applyFilters = applyLiveFilters;
 window.setDateTab = setDateTab;
 window.switchProductChart = switchProductChart;
@@ -2356,6 +1812,7 @@ window.collapseAll = collapseAll;
 window.toggleNotif = toggleNotif;
 window.exportDashboard = exportDashboard;
 window.exportProductChartToExcel = exportProductChartToExcel;
+window.exportSalesRepsToExcel = exportSalesRepsToExcel;
 window.exportGrowthChartToExcel = exportGrowthChartToExcel;
 window.exportGeoChartToExcel = exportGeoChartToExcel;
 window.exportReturnsToExcel = exportReturnsToExcel;
@@ -2363,11 +1820,16 @@ window.exportComparisonMatrixToExcel = exportComparisonMatrixToExcel;
 window.exportDetailTableToExcel = exportDetailTableToExcel;
 window.refreshDashboard = () => loadLiveDashboard(true);
 
-// ─── Initialize on DOM Ready ───
 document.addEventListener('DOMContentLoaded', () => {
+  updateLoginLink();
+  document.getElementById('growthGroupingFilter')?.addEventListener('change', event => {
+    liveDashboard.growthGrouping = event.target.value || 'month';
+    renderGrowthChart(liveDashboard.data?.charts);
+  });
   [
-    'regionFilter', 'cityFilter', 'repFilter', 'productFilter',
-    'yearFilter', 'monthFilter', 'periodFilter', 'dayFilter'
+    'regionFilter', 'cityFilter', 'repFilter', 'customerFilter', 'catFilter', 'productFilter',
+    'yearFilter', 'monthFilter', 'periodFilter', 'dayFilter', 'comparisonFilter',
+    'dataSourceFilter', 'salesOrderStatusFilter', 'dateFrom', 'dateTo'
   ].forEach(id => {
     document.getElementById(id)?.addEventListener('change', applyLiveFilters);
   });
@@ -2377,9 +1839,10 @@ document.addEventListener('DOMContentLoaded', () => {
     window._searchTimer = setTimeout(applyLiveFilters, 300);
   });
 
-  loadLiveDashboard();
+  const activeDateTab = document.querySelector('.date-tab.active');
+  if (activeDateTab) setDateTab(activeDateTab, 'شهري');
+  else loadLiveDashboard();
 });
 </script>
 </body>
 </html>
-
