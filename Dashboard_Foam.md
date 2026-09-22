@@ -673,8 +673,8 @@
     <span style="font-size:13px;color:var(--text3);">⚙️</span>
 
     <select class="filter-select" id="comparisonFilter" aria-label="المقارنة الزمنية" onchange="applyFilters()">
-      <option value="previousPeriod">المقارنة (Compression): الفترة السابقة (Previous Period)</option>
-      <option value="samePeriodLastYear">المقارنة (Compression): نفس الفترة من العام الماضي (Same Period Last Year)</option>
+      <option value="previousPeriod">المقارنة: الفترة السابقة (Previous Period)</option>
+      <option value="samePeriodLastYear">المقارنة: نفس الفترة من العام الماضي (Same Period Last Year)</option>
     </select>
 
     <!-- Filters -->
@@ -942,7 +942,7 @@
           <div class="panel-title" style="margin-bottom:0;">تقرير المقارنة التحليلية للمنتجات والمناطق</div>
           <button class="tbl-export-btn" onclick="exportComparisonMatrixToExcel()" title="تصدير إلى Excel">📥 تصدير Excel</button>
         </div>
-        <div class="matrix-wrap"><table class="matrix" id="comparisonMatrix"><thead><tr><th>المستوى</th><th>القيمة الحالية</th><th>الكمية</th><th>الفترة السابقة</th><th>التغير</th><th>التحصيل</th></tr></thead><tbody></tbody></table></div>
+        <div class="matrix-wrap"><table class="matrix" id="comparisonMatrix"><thead><tr><th>المؤشر</th><th>الفترة الحالية</th><th id="comparisonMatrixHeader">فترة المقارنة</th><th>نسبة الفرق / النمو</th></tr></thead><tbody></tbody></table></div>
       </div>
     </div>
   </section>

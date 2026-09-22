@@ -284,24 +284,69 @@ async function getDateFacets(auth, source) {
 }
 
 function comparisonRange(start, end, mode) {
-  const startDate = new Date(`${start}T00:00:00Z`);
-  const endDate = new Date(`${end}T00:00:00Z`);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+  if (!start || !end) return null;
+  const sParts = String(start).split('-').map(Number);
+  const eParts = String(end).split('-').map(Number);
+  if (sParts.length !== 3 || eParts.length !== 3) return null;
+
+  const [sY, sM, sD] = sParts;
+  const [eY, eM, eD] = eParts;
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
   if (mode === 'samePeriodLastYear') {
-    startDate.setUTCFullYear(startDate.getUTCFullYear() - 1);
-    endDate.setUTCFullYear(endDate.getUTCFullYear() - 1);
-  } else {
-    const duration = endDate.getTime() - startDate.getTime();
-    endDate.setTime(startDate.getTime() - 86400000);
-    startDate.setTime(endDate.getTime() - duration);
+    const priorStartY = sY - 1;
+    const priorEndY = eY - 1;
+    const lastDayStart = new Date(priorStartY, sM, 0).getDate();
+    const lastDayEnd = new Date(priorEndY, eM, 0).getDate();
+    const startDay = Math.min(sD, lastDayStart);
+    const endDay = Math.min(eD, lastDayEnd);
+    return {
+      start: `${priorStartY}-${pad(sM)}-${pad(startDay)}`,
+      end: `${priorEndY}-${pad(eM)}-${pad(endDay)}`
+    };
   }
-  const iso = (date) => date.toISOString().slice(0, 10);
-  return { start: iso(startDate), end: iso(endDate) };
+
+  // mode === 'previousPeriod'
+  // 1. Full calendar month (e.g. 2026-09-01 to 2026-09-30 -> 2026-08-01 to 2026-08-31)
+  const isFullMonth = sY === eY && sM === eM && sD === 1 && eD === new Date(sY, sM, 0).getDate();
+  if (isFullMonth) {
+    const prevMonthDate = new Date(sY, sM - 2, 1);
+    const pY = prevMonthDate.getFullYear();
+    const pM = prevMonthDate.getMonth() + 1;
+    const pLastDay = new Date(pY, pM, 0).getDate();
+    return {
+      start: `${pY}-${pad(pM)}-01`,
+      end: `${pY}-${pad(pM)}-${pad(pLastDay)}`
+    };
+  }
+
+  // 2. Full calendar year (e.g. 2026-01-01 to 2026-12-31 -> 2025-01-01 to 2025-12-31)
+  const isFullYear = sY === eY && sM === 1 && sD === 1 && eM === 12 && eD === 31;
+  if (isFullYear) {
+    return {
+      start: `${sY - 1}-01-01`,
+      end: `${sY - 1}-12-31`
+    };
+  }
+
+  // 3. Generic date range (days, weeks, custom)
+  const startDate = new Date(sY, sM - 1, sD);
+  const endDate = new Date(eY, eM - 1, eD);
+  const diffDays = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+  const priorEnd = new Date(startDate.getTime() - 86400000);
+  const priorStart = new Date(priorEnd.getTime() - (diffDays - 1) * 86400000);
+
+  return {
+    start: iso(priorStart),
+    end: iso(priorEnd)
+  };
 }
 
 function replaceDateDomain(domain, start, end) {
   return [
-    ...domain.filter(([field]) => field !== 'invoice_date'),
+    ...domain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
     ['invoice_date', '>=', start],
     ['invoice_date', '<=', end]
   ];
@@ -618,15 +663,30 @@ app.get('/api/dashboard/overview', async (req, res) => {
     const avgInvoice = invoiceCount ? (net / invoiceCount) : 0;
 
     // 3. Monthly Growth Series
-    const monthlyMoves = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-      [
-        ...moveDomain.filter(([field]) => field !== 'invoice_date'),
-        ['invoice_date', '>=', `${year}-01-01`],
-        ['invoice_date', '<=', `${year}-12-31`]
-      ],
-      ['amount_total:sum'],
-      ['invoice_date:month', 'move_type'],
-      0, 100, 'invoice_date:month asc'
+    const isLastYearComp = (req.query.comparison || 'previousPeriod') === 'samePeriodLastYear';
+    const prevYear = String(Number(year) - 1);
+
+    const [monthlyMoves, prevYearMonthlyMoves] = await Promise.all([
+      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+        [
+          ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
+          ['invoice_date', '>=', `${year}-01-01`],
+          ['invoice_date', '<=', `${year}-12-31`]
+        ],
+        ['amount_total:sum'],
+        ['invoice_date:month', 'move_type'],
+        0, 100, 'invoice_date:month asc'
+      ]),
+      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+        [
+          ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
+          ['invoice_date', '>=', `${prevYear}-01-01`],
+          ['invoice_date', '<=', `${prevYear}-12-31`]
+        ],
+        ['amount_total:sum'],
+        ['invoice_date:month', 'move_type'],
+        0, 100, 'invoice_date:month asc'
+      ])
     ]);
 
     const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -635,24 +695,52 @@ app.get('/api/dashboard/overview', async (req, res) => {
     const monthlyReturns = new Array(12).fill(0);
     const monthlyNet = new Array(12).fill(0);
 
-    monthlyMoves.forEach(m => {
+    const prevMonthlyGross = new Array(12).fill(0);
+    const prevMonthlyReturns = new Array(12).fill(0);
+    const prevMonthlyNet = new Array(12).fill(0);
+
+    const parseMonthIndex = (m) => {
       const monthStr = m['invoice_date:month'] || '';
       const normalizedMonth = String(monthStr).toLowerCase();
       const numericMonth = normalizedMonth.match(/(?:^|[-/])(0?[1-9]|1[0-2])(?:[-/]|$)/);
-      const monthIndex = numericMonth ? Number(numericMonth[1]) - 1 : monthNames.findIndex((name, i) => normalizedMonth.includes(name) || normalizedMonth.includes(englishMonths[i]));
-      if (monthIndex >= 0) {
-        const i = monthIndex;
-          if (m.move_type === 'out_refund') {
-            monthlyReturns[i] += m.amount_total || 0;
-          } else {
-            monthlyGross[i] += m.amount_total || 0;
-          }
+      return numericMonth ? Number(numericMonth[1]) - 1 : monthNames.findIndex((name, i) => normalizedMonth.includes(name) || normalizedMonth.includes(englishMonths[i]));
+    };
+
+    monthlyMoves.forEach(m => {
+      const i = parseMonthIndex(m);
+      if (i >= 0) {
+        if (m.move_type === 'out_refund') monthlyReturns[i] += m.amount_total || 0;
+        else monthlyGross[i] += m.amount_total || 0;
+      }
+    });
+
+    prevYearMonthlyMoves.forEach(m => {
+      const i = parseMonthIndex(m);
+      if (i >= 0) {
+        if (m.move_type === 'out_refund') prevMonthlyReturns[i] += m.amount_total || 0;
+        else prevMonthlyGross[i] += m.amount_total || 0;
       }
     });
 
     for (let i = 0; i < 12; i++) {
       monthlyNet[i] = Math.max(0, monthlyGross[i] - monthlyReturns[i]);
+      prevMonthlyNet[i] = Math.max(0, prevMonthlyGross[i] - prevMonthlyReturns[i]);
     }
+
+    const calculatedTimeSeries = {
+      month: monthNames.map((label, index) => {
+        const currentSales = monthlyNet[index] || 0;
+        const previousSales = isLastYearComp
+          ? (prevMonthlyNet[index] || 0)
+          : (index > 0 ? (monthlyNet[index - 1] || 0) : (prevMonthlyNet[11] || 0));
+        return {
+          label,
+          currentSales,
+          previousSales,
+          growthPercent: percentChange(currentSales, previousSales)
+        };
+      })
+    };
 
     // 4. Sales Reps Performance
     const repsSales = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
@@ -869,11 +957,11 @@ app.get('/api/dashboard/overview', async (req, res) => {
     // 8. Churn / Inactive Customer Warnings
     const churnWarnings = growthAnalysis.churnWarnings;
 
-    const previousRange = comparisonRange(start, end, req.query.comparison);
+    const previousRange = comparisonRange(start, end, req.query.comparison || 'previousPeriod');
     let comparison = null;
     if (previousRange) {
       const previousBaseDomain = [
-        ...moveDomain.filter(([field]) => field !== 'invoice_date'),
+        ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
         ['invoice_date', '>=', previousRange.start],
         ['invoice_date', '<=', previousRange.end]
       ];
@@ -892,13 +980,21 @@ app.get('/api/dashboard/overview', async (req, res) => {
       const previousNet = previousGross - previousReturnsAmount;
       const previousCollected = Math.min(Math.max(0, previousGross - (previousInvoices[0]?.amount_residual || 0)), Math.max(0, previousNet));
       const previousOutstanding = Math.max(0, previousNet - previousCollected);
+      const prevInvoiceCount = previousInvoices[0]?.__count || 0;
+      const prevAvgInvoice = prevInvoiceCount ? Math.round(previousNet / prevInvoiceCount) : 0;
       comparison = {
+        mode: req.query.comparison || 'previousPeriod',
         start: previousRange.start,
         end: previousRange.end,
         kpis: {
-          gross: Math.round(previousGross), returns: Math.round(previousReturnsAmount), net: Math.round(previousNet),
-          collected: Math.round(previousCollected), outstanding: Math.round(previousOutstanding),
-          invoicesCount: previousInvoices[0]?.__count || 0
+          gross: Math.round(previousGross),
+          returns: Math.round(previousReturnsAmount),
+          net: Math.round(previousNet),
+          collected: Math.round(previousCollected),
+          outstanding: Math.round(previousOutstanding),
+          invoicesCount: prevInvoiceCount,
+          returnsCount: previousReturns[0]?.__count || 0,
+          avgInvoice: prevAvgInvoice
         }
       };
     }
@@ -948,7 +1044,7 @@ app.get('/api/dashboard/overview', async (req, res) => {
         monthlyGross,
         monthlyReturns,
         monthlyNet,
-        growthTimeSeries: growthAnalysis.timeSeries,
+        growthTimeSeries: calculatedTimeSeries,
         topProducts,
         bottomProducts,
         regional: regionalList

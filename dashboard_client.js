@@ -83,7 +83,7 @@ function renderAllDashboardComponents() {
   const d = liveDashboard.data;
 
   renderFilterDropdowns(d.filterOptions);
-  renderKpis(d.kpis);
+  renderKpis(d.kpis, d.comparison?.kpis);
   renderProductChart(d.charts);
   renderGrowthChart(d.charts);
   renderRegionalChart(d.charts);
@@ -93,7 +93,7 @@ function renderAllDashboardComponents() {
   renderChurnWarnings(d.churn);
   renderComparisonMatrix(d.kpis, d.comparison?.kpis);
 
-  renderDashboardDate(d.filters);
+  renderDashboardDate(d.filters, d.comparison);
 
   const summaryNode = document.getElementById('dashboardFilterSummary');
   if (summaryNode) {
@@ -128,29 +128,126 @@ function renderFilterDropdowns(opts) {
   fillSelectOptions('dayFilter', opts.days, 'كل الأيام', liveDashboard.filters.day);
 }
 
-function renderDashboardDate(filters = {}) {
+function renderDashboardDate(filters = {}, comparison = null) {
   const node = document.getElementById('dashboardDate');
   if (!node) return;
   const format = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ar-EG') : '';
-  node.textContent = filters.start && filters.end
+  let text = filters.start && filters.end
     ? `${format(filters.start)} إلى ${format(filters.end)}`
     : 'الفترة الحالية';
+
+  if (comparison && comparison.start && comparison.end) {
+    const isLastYear = (comparison.mode === 'samePeriodLastYear') || (liveDashboard.filters.comparison === 'samePeriodLastYear');
+    const compLabel = isLastYear ? 'العام الماضي' : 'الفترة السابقة';
+    text += ` | مقارنة بـ (${compLabel}): ${format(comparison.start)} إلى ${format(comparison.end)}`;
+  }
+  node.textContent = text;
 }
 
-function renderKpis(kpis) {
+function renderKpis(kpis, comparisonKpis = null) {
   if (!kpis) return;
   const grid = document.getElementById('kpiGrid');
   if (!grid) return;
 
+  const isLastYear = liveDashboard.filters.comparison === 'samePeriodLastYear';
+  const compLabel = isLastYear ? 'العام الماضي' : 'الفترة السابقة';
+
+  const calcChange = (curr, prior) => {
+    if (prior === undefined || prior === null) return null;
+    if (prior === 0) return curr > 0 ? '+100%' : '0.0%';
+    const pct = ((curr - prior) / Math.abs(prior)) * 100;
+    return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  };
+
+  const grossDelta = comparisonKpis ? calcChange(kpis.gross, comparisonKpis.gross) : null;
+  const netDelta = comparisonKpis ? calcChange(kpis.net, comparisonKpis.net) : null;
+  const returnsDelta = comparisonKpis ? calcChange(kpis.returns, comparisonKpis.returns) : null;
+  const collectedDelta = comparisonKpis ? calcChange(kpis.collected, comparisonKpis.collected) : null;
+  const outstandingDelta = comparisonKpis ? calcChange(kpis.outstanding, comparisonKpis.outstanding) : null;
+  const invoicesDelta = comparisonKpis ? calcChange(kpis.invoicesCount, comparisonKpis.invoicesCount) : null;
+  const avgInvoiceDelta = comparisonKpis ? calcChange(kpis.avgInvoice, comparisonKpis.avgInvoice) : null;
+
   const cards = [
-    { title: 'إجمالي المبيعات', sub: 'الإيرادات المعتمدة', val: formatMoney(kpis.gross), icon: '💰', color: 'blue', extra: 'عدد الفواتير: ' + formatNumber(kpis.invoicesCount), trend: kpis.collectionRate + '% تحصيل', up: true },
-    { title: 'إجمالي المرتجعات', sub: 'إشعارات الخصم والدائن', val: formatMoney(kpis.returns), icon: '↩', color: 'red', extra: 'عدد المرتجعات: ' + formatNumber(kpis.returnsCount), trend: 'مرتجعات معتمدة', up: false },
-    { title: 'صافي المبيعات', sub: 'المبيعات بعد الخصم', val: formatMoney(kpis.net), icon: '◈', color: 'blue', extra: 'الصافي الفعلي', trend: 'مبيعات حية', up: true },
-    { title: 'المبالغ المحصلة', sub: 'إجمالي النقدية المحصلة', val: formatMoney(kpis.collected), icon: '💳', color: 'green', extra: 'نسبة التحصيل: ' + kpis.collectionRate + '%', trend: kpis.collectionRate + '%', up: true },
-    { title: 'المديونية القائمة', sub: 'الرصيد المتبقي لدى العملاء', val: formatMoney(kpis.outstanding), icon: '⚠', color: 'red', extra: 'مستحق السداد', trend: 'أرصدة آجلة', up: false },
-    { title: 'عدد الفواتير المعتمدة', sub: 'فواتير Posted', val: formatNumber(kpis.invoicesCount), icon: '▤', color: 'blue', extra: 'فاتورة رسمية', trend: 'مكتمل', up: true },
-    { title: 'عدد المرتجعات', sub: 'أوامر الإرجاع', val: formatNumber(kpis.returnsCount), icon: '↩', color: 'red', extra: 'إشعار دائن', trend: 'مرتجع', up: false },
-    { title: 'متوسط قيمة الفاتورة', sub: 'متوسط المبيعات / فاتورة', val: formatMoney(kpis.avgInvoice), icon: '📊', color: 'purple', extra: 'معدل الفاتورة', trend: 'نشط', up: true }
+    {
+      title: 'إجمالي المبيعات',
+      sub: 'الإيرادات المعتمدة',
+      val: formatMoney(kpis.gross),
+      icon: '💰',
+      color: 'blue',
+      extra: 'عدد الفواتير: ' + formatNumber(kpis.invoicesCount),
+      trend: grossDelta ? `${grossDelta} vs ${compLabel}` : (kpis.collectionRate + '% تحصيل'),
+      up: grossDelta ? grossDelta.startsWith('+') : true
+    },
+    {
+      title: 'إجمالي المرتجعات',
+      sub: 'إشعارات الخصم والدائن',
+      val: formatMoney(kpis.returns),
+      icon: '↩',
+      color: 'red',
+      extra: 'عدد المرتجعات: ' + formatNumber(kpis.returnsCount),
+      trend: returnsDelta ? `${returnsDelta} vs ${compLabel}` : 'مرتجعات معتمدة',
+      up: returnsDelta ? returnsDelta.startsWith('-') : false
+    },
+    {
+      title: 'صافي المبيعات',
+      sub: 'المبيعات بعد الخصم',
+      val: formatMoney(kpis.net),
+      icon: '◈',
+      color: 'blue',
+      extra: 'الصافي الفعلي',
+      trend: netDelta ? `${netDelta} vs ${compLabel}` : 'مبيعات حية',
+      up: netDelta ? netDelta.startsWith('+') : true
+    },
+    {
+      title: 'المبالغ المحصلة',
+      sub: 'إجمالي النقدية المحصلة',
+      val: formatMoney(kpis.collected),
+      icon: '💳',
+      color: 'green',
+      extra: 'نسبة التحصيل: ' + kpis.collectionRate + '%',
+      trend: collectedDelta ? `${collectedDelta} vs ${compLabel}` : (kpis.collectionRate + '%'),
+      up: collectedDelta ? collectedDelta.startsWith('+') : true
+    },
+    {
+      title: 'المديونية القائمة',
+      sub: 'الرصيد المتبقي لدى العملاء',
+      val: formatMoney(kpis.outstanding),
+      icon: '⚠',
+      color: 'red',
+      extra: 'مستحق السداد',
+      trend: outstandingDelta ? `${outstandingDelta} vs ${compLabel}` : 'أرصدة آجلة',
+      up: outstandingDelta ? outstandingDelta.startsWith('-') : false
+    },
+    {
+      title: 'عدد الفواتير المعتمدة',
+      sub: 'فواتير Posted',
+      val: formatNumber(kpis.invoicesCount),
+      icon: '▤',
+      color: 'blue',
+      extra: 'فاتورة رسمية',
+      trend: invoicesDelta ? `${invoicesDelta} vs ${compLabel}` : 'مكتمل',
+      up: invoicesDelta ? invoicesDelta.startsWith('+') : true
+    },
+    {
+      title: 'عدد المرتجعات',
+      sub: 'أوامر الإرجاع',
+      val: formatNumber(kpis.returnsCount),
+      icon: '↩',
+      color: 'red',
+      extra: 'إشعار دائن',
+      trend: 'مرتجع',
+      up: false
+    },
+    {
+      title: 'متوسط قيمة الفاتورة',
+      sub: 'متوسط المبيعات / فاتورة',
+      val: formatMoney(kpis.avgInvoice),
+      icon: '📊',
+      color: 'purple',
+      extra: 'معدل الفاتورة',
+      trend: avgInvoiceDelta ? `${avgInvoiceDelta} vs ${compLabel}` : 'نشط',
+      up: avgInvoiceDelta ? avgInvoiceDelta.startsWith('+') : true
+    }
   ];
 
   grid.innerHTML = cards.map(c => `
@@ -230,6 +327,9 @@ function renderGrowthChart(charts) {
   const canvas = document.getElementById('growthChart');
   if (!canvas || typeof Chart === 'undefined' || !charts) return;
 
+  const isLastYear = liveDashboard.filters.comparison === 'samePeriodLastYear';
+  const compLegend = isLastYear ? 'مبيعات نفس الفترة من العام الماضي' : 'مبيعات الفترة السابقة';
+
   const monthLabels = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
   const series = charts.growthTimeSeries?.[liveDashboard.growthGrouping] || [];
   const fallback = (charts.months || monthLabels).map((label, index) => ({
@@ -246,7 +346,7 @@ function renderGrowthChart(charts) {
   window._lastGrowthChartData = labels.map((m, i) => ({
     'الشهر': m,
     'الفترة الحالية': netData[i] || 0,
-    'الفترة السابقة': comparisonData[i] || 0,
+    'فترة المقارنة': comparisonData[i] || 0,
     'نسبة التغير': rows[i]?.growthPercent ?? null
   }));
 
@@ -268,7 +368,7 @@ function renderGrowthChart(charts) {
           tension: 0.35
         },
         {
-          label: 'مبيعات الفترة السابقة',
+          label: compLegend,
           data: comparisonData,
           borderColor: '#70aaa2',
           borderDash: [5, 5],
@@ -562,8 +662,15 @@ function renderComparisonMatrix(kpis, previous = {}) {
   if (!tbody || !kpis) return;
   window._lastComparisonData = { kpis, previous };
 
+  const isLastYear = liveDashboard.filters.comparison === 'samePeriodLastYear';
+  const compHeader = document.getElementById('comparisonMatrixHeader');
+  if (compHeader) {
+    compHeader.textContent = isLastYear ? 'نفس الفترة من العام الماضي' : 'الفترة السابقة';
+  }
+
   const change = (current, prior) => {
-    if (!prior) return current ? 'جديد' : '0.0%';
+    if (prior === undefined || prior === null) return current ? '+100%' : '0.0%';
+    if (prior === 0) return current > 0 ? '+100%' : '0.0%';
     const value = ((current - prior) / Math.abs(prior)) * 100;
     return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
   };
@@ -573,7 +680,8 @@ function renderComparisonMatrix(kpis, previous = {}) {
     ['صافي المبيعات', kpis.net, previous.net, true],
     ['المبالغ المحصلة', kpis.collected, previous.collected, true],
     ['المديونية القائمة', kpis.outstanding, previous.outstanding, true],
-    ['عدد الفواتير المعتمدة', kpis.invoicesCount, previous.invoicesCount, false]
+    ['عدد الفواتير المعتمدة', kpis.invoicesCount, previous.invoicesCount, false],
+    ['متوسط قيمة الفاتورة', kpis.avgInvoice, previous.avgInvoice, true]
   ].map(([label, current, prior, money]) => {
     const delta = change(current, prior);
     return [label, money ? formatMoney(current) : formatNumber(current), money ? formatMoney(prior) : formatNumber(prior), delta];
