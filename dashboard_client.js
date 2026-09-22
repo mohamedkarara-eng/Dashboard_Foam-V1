@@ -38,9 +38,30 @@ const liveDashboard = {
 const formatMoney = (val) => (Math.round(Number(val) || 0).toLocaleString('ar-EG')) + ' ج.م';
 const formatNumber = (val) => Math.round(Number(val) || 0).toLocaleString('ar-EG');
 
+function showLoading(message = 'جاري جلب وتحديث البيانات من Odoo...') {
+  document.body.classList.add('is-loading');
+  const bar = document.getElementById('globalProgressBar');
+  const badge = document.getElementById('globalLoadingBadge');
+  if (bar) bar.classList.add('active');
+  if (badge) {
+    const textNode = badge.querySelector('span');
+    if (textNode) textNode.textContent = message;
+    badge.classList.add('active');
+  }
+}
+
+function hideLoading() {
+  document.body.classList.remove('is-loading');
+  const bar = document.getElementById('globalProgressBar');
+  const badge = document.getElementById('globalLoadingBadge');
+  if (bar) bar.classList.remove('active');
+  if (badge) badge.classList.remove('active');
+}
+
 async function loadLiveDashboard(forceRefresh = false) {
   const errorNode = document.getElementById('dashboardError');
   if (errorNode) errorNode.hidden = true;
+  showLoading(forceRefresh ? 'جاري تحديث البيانات من خادم Odoo...' : 'جاري تحميل البيانات...');
   try {
     const params = new URLSearchParams();
     if (liveDashboard.filters.year) params.set('year', liveDashboard.filters.year);
@@ -75,6 +96,8 @@ async function loadLiveDashboard(forceRefresh = false) {
       errorNode.textContent = err.message || 'تعذر تحميل بيانات لوحة التحكم';
       errorNode.hidden = false;
     }
+  } finally {
+    hideLoading();
   }
 }
 
@@ -856,11 +879,18 @@ function toggleNotif() {
 }
 
 function xlsxDownload(wb, filename) {
-  if (typeof XLSX !== 'undefined') {
-    XLSX.writeFile(wb, filename);
-  } else {
-    alert('مكتبة SheetJS قيد التحميل، يرجى المحاولة مرة أخرى.');
-  }
+  showLoading('جاري معالجة وتصدير ملف Excel...');
+  setTimeout(() => {
+    try {
+      if (typeof XLSX !== 'undefined') {
+        XLSX.writeFile(wb, filename);
+      } else {
+        alert('مكتبة SheetJS قيد التحميل، يرجى المحاولة مرة أخرى.');
+      }
+    } finally {
+      hideLoading();
+    }
+  }, 60);
 }
 
 function createWorkbook(sheets) {
@@ -1032,6 +1062,7 @@ async function updateAuthUI() {
 }
 
 async function handleLogout() {
+  showLoading('جاري تسجيل الخروج...');
   try {
     await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
   } catch (e) {
