@@ -133,6 +133,51 @@
       background: var(--ks-warning); border-radius: 0;
     }
 
+    [hidden] { display: none !important; }
+
+    .user-profile {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      height: 36px;
+      background: var(--ks-raised);
+      border: 1px solid var(--ks-rule);
+      border-radius: 2px;
+      color: var(--ks-champagne);
+      font-family: 'Albert Sans', 'Cairo', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .logout-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      height: 36px;
+      background: transparent;
+      border: 1px solid var(--ks-rule);
+      border-radius: 2px;
+      color: var(--ks-text-muted);
+      font-family: 'Albert Sans', 'Cairo', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .logout-btn:hover {
+      background: rgba(220, 53, 69, 0.15);
+      border-color: #dc3545;
+      color: #ff6b6b;
+    }
+
     .export-btn {
       display: flex; align-items: center; gap: 7px;
       padding: 0 24px; height: 36px; border-radius: 2px;
@@ -584,6 +629,13 @@
 
     <!-- Actions -->
     <div class="header-actions">
+      <div id="userProfile" class="user-profile" hidden>
+        <span class="user-badge" id="userNameDisplay">👤 مستخدم</span>
+        <button class="logout-btn" id="logoutBtn" title="تسجيل الخروج" onclick="handleLogout()">
+          <span>🚪</span>
+          <span>خروج</span>
+        </button>
+      </div>
       <a class="export-btn" id="loginLink" href="/login.html" hidden style="text-decoration:none;">🔐 تسجيل الدخول</a>
       <button class="notif-btn" title="الإشعارات" onclick="toggleNotif()">
         🔔<span class="notif-dot"></span>
@@ -1791,14 +1843,52 @@ function exportDetailTableToExcel() {
   xlsxDownload(wb, 'التقرير-التفصيلي.xlsx');
 }
 
-function updateLoginLink() {
-  const link = document.getElementById('loginLink');
-  if (!link) return;
-  fetch('/api/me', { credentials: 'same-origin' })
-    .then(response => {
-      if (response.ok) link.hidden = true;
-    })
-    .catch(() => {});
+async function updateAuthUI() {
+  const loginLink = document.getElementById('loginLink');
+  const userProfile = document.getElementById('userProfile');
+  const userNameDisplay = document.getElementById('userNameDisplay');
+
+  try {
+    const response = await fetch('/api/me', { credentials: 'same-origin' });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.authenticated) {
+        if (loginLink) {
+          loginLink.hidden = true;
+          loginLink.style.setProperty('display', 'none', 'important');
+        }
+        if (userProfile) {
+          userProfile.hidden = false;
+          userProfile.style.removeProperty('display');
+        }
+        if (userNameDisplay) {
+          userNameDisplay.textContent = `👤 ${data.username || 'مستخدم'}`;
+        }
+        return;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to check auth status:', e);
+  }
+
+  // Not authenticated / public mode
+  if (loginLink) {
+    loginLink.hidden = false;
+    loginLink.style.removeProperty('display');
+  }
+  if (userProfile) {
+    userProfile.hidden = true;
+    userProfile.style.setProperty('display', 'none', 'important');
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {
+    console.error('Logout failed:', e);
+  }
+  window.location.assign('/login.html');
 }
 
 window.applyFilters = applyLiveFilters;
@@ -1818,10 +1908,13 @@ window.exportGeoChartToExcel = exportGeoChartToExcel;
 window.exportReturnsToExcel = exportReturnsToExcel;
 window.exportComparisonMatrixToExcel = exportComparisonMatrixToExcel;
 window.exportDetailTableToExcel = exportDetailTableToExcel;
+window.handleLogout = handleLogout;
+window.updateAuthUI = updateAuthUI;
+window.updateLoginLink = updateAuthUI;
 window.refreshDashboard = () => loadLiveDashboard(true);
 
 document.addEventListener('DOMContentLoaded', () => {
-  updateLoginLink();
+  updateAuthUI();
   document.getElementById('growthGroupingFilter')?.addEventListener('change', event => {
     liveDashboard.growthGrouping = event.target.value || 'month';
     renderGrowthChart(liveDashboard.data?.charts);

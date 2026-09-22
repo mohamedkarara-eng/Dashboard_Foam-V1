@@ -783,14 +783,52 @@ function exportDetailTableToExcel() {
   xlsxDownload(wb, 'التقرير-التفصيلي.xlsx');
 }
 
-function updateLoginLink() {
-  const link = document.getElementById('loginLink');
-  if (!link) return;
-  fetch('/api/me', { credentials: 'same-origin' })
-    .then(response => {
-      if (response.ok) link.hidden = true;
-    })
-    .catch(() => {});
+async function updateAuthUI() {
+  const loginLink = document.getElementById('loginLink');
+  const userProfile = document.getElementById('userProfile');
+  const userNameDisplay = document.getElementById('userNameDisplay');
+
+  try {
+    const response = await fetch('/api/me', { credentials: 'same-origin' });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.authenticated) {
+        if (loginLink) {
+          loginLink.hidden = true;
+          loginLink.style.setProperty('display', 'none', 'important');
+        }
+        if (userProfile) {
+          userProfile.hidden = false;
+          userProfile.style.removeProperty('display');
+        }
+        if (userNameDisplay) {
+          userNameDisplay.textContent = `👤 ${data.username || 'مستخدم'}`;
+        }
+        return;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to check auth status:', e);
+  }
+
+  // Not authenticated / public mode
+  if (loginLink) {
+    loginLink.hidden = false;
+    loginLink.style.removeProperty('display');
+  }
+  if (userProfile) {
+    userProfile.hidden = true;
+    userProfile.style.setProperty('display', 'none', 'important');
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {
+    console.error('Logout failed:', e);
+  }
+  window.location.assign('/login.html');
 }
 
 window.applyFilters = applyLiveFilters;
@@ -810,10 +848,13 @@ window.exportGeoChartToExcel = exportGeoChartToExcel;
 window.exportReturnsToExcel = exportReturnsToExcel;
 window.exportComparisonMatrixToExcel = exportComparisonMatrixToExcel;
 window.exportDetailTableToExcel = exportDetailTableToExcel;
+window.handleLogout = handleLogout;
+window.updateAuthUI = updateAuthUI;
+window.updateLoginLink = updateAuthUI;
 window.refreshDashboard = () => loadLiveDashboard(true);
 
 document.addEventListener('DOMContentLoaded', () => {
-  updateLoginLink();
+  updateAuthUI();
   document.getElementById('growthGroupingFilter')?.addEventListener('change', event => {
     liveDashboard.growthGrouping = event.target.value || 'month';
     renderGrowthChart(liveDashboard.data?.charts);

@@ -133,6 +133,51 @@
       background: var(--ks-warning); border-radius: 0;
     }
 
+    [hidden] { display: none !important; }
+
+    .user-profile {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      height: 36px;
+      background: var(--ks-raised);
+      border: 1px solid var(--ks-rule);
+      border-radius: 2px;
+      color: var(--ks-champagne);
+      font-family: 'Albert Sans', 'Cairo', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .logout-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      height: 36px;
+      background: transparent;
+      border: 1px solid var(--ks-rule);
+      border-radius: 2px;
+      color: var(--ks-text-muted);
+      font-family: 'Albert Sans', 'Cairo', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .logout-btn:hover {
+      background: rgba(220, 53, 69, 0.15);
+      border-color: #dc3545;
+      color: #ff6b6b;
+    }
+
     .export-btn {
       display: flex; align-items: center; gap: 7px;
       padding: 0 24px; height: 36px; border-radius: 2px;
@@ -584,6 +629,13 @@
 
     <!-- Actions -->
     <div class="header-actions">
+      <div id="userProfile" class="user-profile" hidden>
+        <span class="user-badge" id="userNameDisplay">👤 مستخدم</span>
+        <button class="logout-btn" id="logoutBtn" title="تسجيل الخروج" onclick="handleLogout()">
+          <span>🚪</span>
+          <span>خروج</span>
+        </button>
+      </div>
       <a class="export-btn" id="loginLink" href="/login.html" hidden style="text-decoration:none;">🔐 تسجيل الدخول</a>
       <button class="notif-btn" title="الإشعارات" onclick="toggleNotif()">
         🔔<span class="notif-dot"></span>
