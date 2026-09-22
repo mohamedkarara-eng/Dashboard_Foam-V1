@@ -2100,11 +2100,79 @@ async function handleLogout() {
   window.location.assign('/login.html');
 }
 
+let _repSortDir = 'desc';
+function toggleRepSort() {
+  _repSortDir = _repSortDir === 'desc' ? 'asc' : 'desc';
+  if (liveDashboard.data?.reps) {
+    liveDashboard.data.reps.sort((a, b) => _repSortDir === 'desc' ? b.achieved - a.achieved : a.achieved - b.achieved);
+    renderRepsTable(liveDashboard.data.reps);
+  }
+  if (liveDashboard.data?.drilldown) {
+    liveDashboard.data.drilldown.forEach(reg => {
+      if (reg.customers) {
+        reg.customers.sort((a, b) => _repSortDir === 'desc' ? (b.rep || '').localeCompare(a.rep || '') : (a.rep || '').localeCompare(b.rep || ''));
+      }
+    });
+    renderDrilldownTable(liveDashboard.data.drilldown);
+  }
+}
+
+let _drillSortField = null;
+let _drillSortAsc = false;
+
+function sortDrilldown(field) {
+  if (_drillSortField === field) {
+    _drillSortAsc = !_drillSortAsc;
+  } else {
+    _drillSortField = field;
+    _drillSortAsc = false;
+  }
+
+  const drilldown = liveDashboard.data?.drilldown;
+  if (!drilldown) return;
+
+  const getVal = (item) => {
+    switch (field) {
+      case 'invoices': return item.invoices || 0;
+      case 'grossQty': return item.grossQty || 0;
+      case 'returnedQty': return item.returnedQty || 0;
+      case 'netQty': return item.netQty || 0;
+      case 'gross': return item.sales || 0;
+      case 'returns': return item.returnedSales || (item.returnedQty ? Math.round(item.sales * (item.returnedQty / (item.grossQty || 1))) : 0);
+      case 'net': return item.sales || 0;
+      case 'collected': return item.collected || 0;
+      case 'outstanding': return item.outstanding || 0;
+      case 'rate': return item.rate || 0;
+      default: return item.sales || 0;
+    }
+  };
+
+  drilldown.sort((a, b) => {
+    const vA = getVal(a);
+    const vB = getVal(b);
+    return _drillSortAsc ? (vA > vB ? 1 : -1) : (vB > vA ? 1 : -1);
+  });
+
+  drilldown.forEach(reg => {
+    if (reg.customers) {
+      reg.customers.sort((a, b) => {
+        const vA = getVal(a);
+        const vB = getVal(b);
+        return _drillSortAsc ? (vA > vB ? 1 : -1) : (vB > vA ? 1 : -1);
+      });
+    }
+  });
+
+  renderDrilldownTable(drilldown);
+}
+
 window.applyFilters = applyLiveFilters;
 window.setDateTab = setDateTab;
 window.switchProductChart = switchProductChart;
 window.toggleView = toggleView;
 window.toggleRepRow = toggleRepRow;
+window.toggleRepSort = toggleRepSort;
+window.sortDrilldown = sortDrilldown;
 window.toggleRegionDrill = toggleRegionDrill;
 window.expandAll = expandAll;
 window.collapseAll = collapseAll;
@@ -2134,6 +2202,15 @@ document.addEventListener('DOMContentLoaded', () => {
     'dataSourceFilter', 'salesOrderStatusFilter', 'dateFrom', 'dateTo'
   ].forEach(id => {
     document.getElementById(id)?.addEventListener('change', applyLiveFilters);
+  });
+
+  document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th => {
+    th.style.cursor = 'pointer';
+    th.title = 'انقر للترتيب حسب هذا العمود';
+    th.addEventListener('click', () => {
+      const sortKey = th.getAttribute('data-sort');
+      if (sortKey) sortDrilldown(sortKey);
+    });
   });
 
   document.getElementById('globalSearch')?.addEventListener('input', () => {
