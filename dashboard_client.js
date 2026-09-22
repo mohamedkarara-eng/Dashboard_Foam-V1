@@ -172,6 +172,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'إجمالي المبيعات',
       sub: 'الإيرادات المعتمدة',
       val: formatMoney(kpis.gross),
+      priorText: comparisonKpis ? `${compLabel}: ${formatMoney(comparisonKpis.gross)}` : '',
       icon: '💰',
       color: 'blue',
       extra: 'عدد الفواتير: ' + formatNumber(kpis.invoicesCount),
@@ -182,6 +183,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'إجمالي المرتجعات',
       sub: 'إشعارات الخصم والدائن',
       val: formatMoney(kpis.returns),
+      priorText: comparisonKpis ? `${compLabel}: ${formatMoney(comparisonKpis.returns)}` : '',
       icon: '↩',
       color: 'red',
       extra: 'عدد المرتجعات: ' + formatNumber(kpis.returnsCount),
@@ -192,6 +194,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'صافي المبيعات',
       sub: 'المبيعات بعد الخصم',
       val: formatMoney(kpis.net),
+      priorText: comparisonKpis ? `${compLabel}: ${formatMoney(comparisonKpis.net)}` : '',
       icon: '◈',
       color: 'blue',
       extra: 'الصافي الفعلي',
@@ -202,6 +205,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'المبالغ المحصلة',
       sub: 'إجمالي النقدية المحصلة',
       val: formatMoney(kpis.collected),
+      priorText: comparisonKpis ? `${compLabel}: ${formatMoney(comparisonKpis.collected)}` : '',
       icon: '💳',
       color: 'green',
       extra: 'نسبة التحصيل: ' + kpis.collectionRate + '%',
@@ -212,6 +216,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'المديونية القائمة',
       sub: 'الرصيد المتبقي لدى العملاء',
       val: formatMoney(kpis.outstanding),
+      priorText: comparisonKpis ? `${compLabel}: ${formatMoney(comparisonKpis.outstanding)}` : '',
       icon: '⚠',
       color: 'red',
       extra: 'مستحق السداد',
@@ -222,6 +227,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'عدد الفواتير المعتمدة',
       sub: 'فواتير Posted',
       val: formatNumber(kpis.invoicesCount),
+      priorText: comparisonKpis ? `${compLabel}: ${formatNumber(comparisonKpis.invoicesCount)} فاتورة` : '',
       icon: '▤',
       color: 'blue',
       extra: 'فاتورة رسمية',
@@ -232,6 +238,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'عدد المرتجعات',
       sub: 'أوامر الإرجاع',
       val: formatNumber(kpis.returnsCount),
+      priorText: comparisonKpis ? `${compLabel}: ${formatNumber(comparisonKpis.returnsCount)} إشعار` : '',
       icon: '↩',
       color: 'red',
       extra: 'إشعار دائن',
@@ -242,6 +249,7 @@ function renderKpis(kpis, comparisonKpis = null) {
       title: 'متوسط قيمة الفاتورة',
       sub: 'متوسط المبيعات / فاتورة',
       val: formatMoney(kpis.avgInvoice),
+      priorText: comparisonKpis ? `${compLabel}: ${formatMoney(comparisonKpis.avgInvoice)}` : '',
       icon: '📊',
       color: 'purple',
       extra: 'معدل الفاتورة',
@@ -260,7 +268,7 @@ function renderKpis(kpis, comparisonKpis = null) {
         <div class="kpi-icon">${c.icon}</div>
       </div>
       <div class="kpi-value">${c.val}</div>
-      <div class="kpi-full">${c.val}</div>
+      <div class="kpi-full">${c.priorText || c.val}</div>
       <div class="kpi-footer">
         <div class="kpi-trend ${c.up ? 'up' : 'down'}">${c.trend}</div>
         <div class="kpi-extra"><span>${c.extra}</span></div>
