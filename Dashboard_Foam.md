@@ -920,6 +920,7 @@
     <span style="font-size:13px;color:var(--text3);">⚙️</span>
 
     <select class="filter-select" id="comparisonFilter" aria-label="المقارنة الزمنية" onchange="applyFilters()">
+      <option value="none">بدون مقارنة (None)</option>
       <option value="previousPeriod">المقارنة: الفترة السابقة (Previous Period)</option>
       <option value="samePeriodLastYear">المقارنة: نفس الفترة من العام الماضي (Same Period Last Year)</option>
     </select>
@@ -1214,8 +1215,6 @@
           <thead><tr>
             <th>اسم الأصناف والمنتجات</th>
             <th>التصنيف</th>
-            <th>مسجل إرجاعه على النظام</th>
-            <th>مرجع إشعار الخصم</th>
             <th>اسم المندوب</th>
             <th>اسم المنطقة</th>
             <th>الكمية المرتجعة</th>
@@ -2072,8 +2071,6 @@ function renderReturnsAnalyticsTable() {
     return `<tr>
       <td>${row.product || '—'}</td>
       <td>${row.category || '—'}</td>
-      <td><span class="ret-badge ${onSystem?'yes':'no'}">${onSystem?'نعم':'لا'}</span></td>
-      <td style="font-family:monospace;font-size:12px;">${creditNote}</td>
       <td>${row.rep || row.salesRep || '—'}</td>
       <td>${row.region || '—'}</td>
       <td>${brdNumFn(row.returnedQty||0)}</td>

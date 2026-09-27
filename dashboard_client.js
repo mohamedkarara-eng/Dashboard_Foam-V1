@@ -35,8 +35,8 @@ const liveDashboard = {
   }
 };
 
-const formatMoney = (val) => (Math.round(Number(val) || 0).toLocaleString('ar-EG')) + ' ج.م';
-const formatNumber = (val) => Math.round(Number(val) || 0).toLocaleString('ar-EG');
+const formatMoney = (val) => (Number(val) || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ج.م';
+const formatNumber = (val) => (Number(val) || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function showLoading(message = 'جاري جلب وتحديث البيانات من Odoo...') {
   document.body.classList.add('is-loading');
@@ -70,7 +70,7 @@ async function loadLiveDashboard(forceRefresh = false) {
     if (liveDashboard.filters.day) params.set('day', liveDashboard.filters.day);
     if (liveDashboard.filters.startDate) params.set('startDate', liveDashboard.filters.startDate);
     if (liveDashboard.filters.endDate) params.set('endDate', liveDashboard.filters.endDate);
-    ['region', 'city', 'rep', 'customer', 'category', 'product', 'query', 'comparison', 'source', 'salesOrderStatus']
+    ['region', 'city', 'rep', 'customer', 'category', 'product', 'query', 'comparison', 'source', 'salesOrderStatus', 'metric']
       .forEach((key) => {
         if (liveDashboard.filters[key]) params.set(key, liveDashboard.filters[key]);
       });
@@ -200,7 +200,8 @@ function renderKpis(kpis, comparisonKpis = null) {
       color: 'blue',
       extra: 'عدد الفواتير: ' + formatNumber(kpis.invoicesCount),
       trend: grossDelta ? `${grossDelta} vs ${compLabel}` : (kpis.collectionRate + '% تحصيل'),
-      up: grossDelta ? grossDelta.startsWith('+') : true
+      up: grossDelta ? grossDelta.startsWith('+') : true,
+      action: `showDrilldown('المبيعات', ${kpis.gross}, ${kpis.invoicesCount})`
     },
     {
       title: 'إجمالي المرتجعات',
@@ -211,7 +212,8 @@ function renderKpis(kpis, comparisonKpis = null) {
       color: 'red',
       extra: 'عدد المرتجعات: ' + formatNumber(kpis.returnsCount),
       trend: returnsDelta ? `${returnsDelta} vs ${compLabel}` : 'مرتجعات معتمدة',
-      up: returnsDelta ? returnsDelta.startsWith('-') : false
+      up: returnsDelta ? returnsDelta.startsWith('-') : false,
+      action: `showDrilldown('المرتجعات', ${kpis.returns}, ${kpis.returnsCount})`
     },
     {
       title: 'صافي المبيعات',
@@ -222,7 +224,8 @@ function renderKpis(kpis, comparisonKpis = null) {
       color: 'blue',
       extra: 'الصافي الفعلي',
       trend: netDelta ? `${netDelta} vs ${compLabel}` : 'مبيعات حية',
-      up: netDelta ? netDelta.startsWith('+') : true
+      up: netDelta ? netDelta.startsWith('+') : true,
+      action: `showDrilldown('صافي المبيعات', ${kpis.net}, ${kpis.invoicesCount})`
     },
     {
       title: 'المبالغ المحصلة',
@@ -233,7 +236,8 @@ function renderKpis(kpis, comparisonKpis = null) {
       color: 'green',
       extra: 'نسبة التحصيل: ' + kpis.collectionRate + '%',
       trend: collectedDelta ? `${collectedDelta} vs ${compLabel}` : (kpis.collectionRate + '%'),
-      up: collectedDelta ? collectedDelta.startsWith('+') : true
+      up: collectedDelta ? collectedDelta.startsWith('+') : true,
+      action: `showDrilldown('التحصيل', ${kpis.collected}, 0)`
     },
     {
       title: 'المديونية القائمة',
@@ -277,12 +281,13 @@ function renderKpis(kpis, comparisonKpis = null) {
       color: 'purple',
       extra: 'معدل الفاتورة',
       trend: avgInvoiceDelta ? `${avgInvoiceDelta} vs ${compLabel}` : 'نشط',
-      up: avgInvoiceDelta ? avgInvoiceDelta.startsWith('+') : true
+      up: avgInvoiceDelta ? avgInvoiceDelta.startsWith('+') : true,
+      action: `showDrilldown('متوسط الفاتورة', ${kpis.avgInvoice}, 0)`
     }
   ];
 
   grid.innerHTML = cards.map(c => `
-    <div class="kpi-card ${c.color}">
+    <div class="kpi-card ${c.color}" onclick="${c.action || ''}" style="${c.action ? 'cursor:pointer;' : ''}" title="اضغط لعرض تفاصيل المستندات">
       <div class="kpi-top">
         <div>
           <div class="kpi-sub">${c.sub}</div>
@@ -299,6 +304,13 @@ function renderKpis(kpis, comparisonKpis = null) {
     </div>
   `).join('');
 }
+
+// TC-21: Drilldown Action
+window.showDrilldown = function(type, amount, count) {
+  const isSalesOrder = liveDashboard.filters.source === 'salesOrder';
+  const docType = isSalesOrder ? 'أوامر البيع' : 'الفواتير';
+  alert(`🔍 تفاصيل ${type}:\n\n- إجمالي القيمة: ${formatMoney(amount)}\n- عدد ${docType} المرتبطة: ${count || 'غير محدد'}\n\n* جاري العمل على ربط هذه النافذة بفتح السجلات داخل نظام Odoo مباشرة.`);
+};
 
 function renderProductChart(charts) {
   const canvas = document.getElementById('productChart');
@@ -683,7 +695,7 @@ function renderReturnsTable(returns) {
   window._lastReturnsData = returns || [];
 
   if (!returns || !returns.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--ks-text-muted);padding:24px;">لا توجد مرتجعات مسجلة في الفترة المحددة</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--ks-text-muted);padding:24px;">لا توجد مرتجعات مسجلة في الفترة المحددة</td></tr>';
     return;
   }
 
@@ -691,8 +703,6 @@ function renderReturnsTable(returns) {
     <tr>
       <td>${r.product}</td>
       <td>${r.category}</td>
-      <td><span class="ret-badge ${r.returnOnSystem ? 'yes' : 'no'}">${r.returnOnSystem ? 'نعم' : 'لا'}</span></td>
-      <td style="font-family:monospace;font-size:12px;">${r.creditNote}</td>
       <td>${r.rep}</td>
       <td>${r.region}</td>
       <td>${formatNumber(r.returnedQty)}</td>
@@ -785,12 +795,18 @@ function applyLiveFilters() {
   liveDashboard.filters.query = (getVal('globalSearch') || '').trim();
   liveDashboard.filters.startDate = getVal('dateFrom');
   liveDashboard.filters.endDate = getVal('dateTo');
-  liveDashboard.filters.comparison = getVal('comparisonFilter') || 'previousPeriod';
+  liveDashboard.filters.comparison = getVal('comparisonFilter') || 'none';
   liveDashboard.filters.source = getVal('dataSourceFilter') || 'postedInvoice';
   liveDashboard.filters.salesOrderStatus = getVal('salesOrderStatusFilter') || 'all';
+  liveDashboard.filters.metric = liveDashboard.metric;
 
   const statusControl = document.getElementById('salesOrderStatusFilter');
   if (statusControl) statusControl.hidden = liveDashboard.filters.source !== 'salesOrder';
+  
+  // TC-10: Do not hide comparison filter when salesOrder is selected
+  // The filter must remain active and visible.
+  const compControl = document.getElementById('comparisonFilter');
+  if (compControl) compControl.hidden = false;
 
   loadLiveDashboard();
 }
@@ -858,7 +874,8 @@ function toggleView() {
   const toggle = document.getElementById('viewToggle');
   if (toggle) toggle.classList.toggle('qty');
   toggle?.setAttribute('aria-pressed', String(liveDashboard.metric === 'quantity'));
-  renderProductChart(liveDashboard.data?.charts);
+  // TC-09, TC-19: Apply filter globally and trigger backend reload if needed
+  applyLiveFilters();
 }
 
 function expandAll() {
@@ -872,10 +889,14 @@ function collapseAll() {
 }
 
 function toggleNotif() {
+  // TC-08: Clear Churn warning message
   const warnings = liveDashboard.data?.churn || [];
-  alert(warnings.length
-    ? `يوجد ${warnings.length} تحذير متابعة مرتبط بالفلاتر الحالية.`
-    : 'لا توجد تحذيرات متابعة للفلاتر الحالية.');
+  if (warnings.length) {
+    const list = warnings.slice(0, 10).map(w => `- ${w.name}: تراجع ${w.growthPercent}%`).join('\n');
+    alert(`يوجد ${warnings.length} تحذير لتراجع المبيعات للعملاء مقارنة بالفترة السابقة.\nأبرز العملاء المتراجعين:\n${list}\n\nراجع قسم "تحذيرات هبوط العملاء" أسفل لوحة التحكم للتفاصيل.`);
+  } else {
+    alert('لا توجد تحذيرات تراجع مبيعات للفلاتر الحالية (جميع العملاء مستقرين أو في نمو).');
+  }
 }
 
 function xlsxDownload(wb, filename) {
@@ -1215,12 +1236,58 @@ document.addEventListener('DOMContentLoaded', () => {
     liveDashboard.growthGrouping = event.target.value || 'month';
     renderGrowthChart(liveDashboard.data?.charts);
   });
+  const dateControls = ['yearFilter', 'monthFilter', 'periodFilter', 'dayFilter'];
+  const customControls = ['dateFrom', 'dateTo'];
+
+  const populateDays = () => {
+    const yearStr = document.getElementById('yearFilter')?.value;
+    const monthStr = document.getElementById('monthFilter')?.value;
+    const daySelect = document.getElementById('dayFilter');
+    if (!daySelect) return;
+    
+    // Save current selection
+    const currentDay = daySelect.value;
+    
+    if (yearStr && monthStr) {
+      const daysInMonth = new Date(Number(yearStr), Number(monthStr), 0).getDate();
+      const opts = ['<option value="">كل الأيام</option>'];
+      for (let i = 1; i <= daysInMonth; i++) {
+        const val = String(i).padStart(2, '0');
+        const selected = val === currentDay ? 'selected' : '';
+        opts.push(`<option value="${val}" ${selected}>${i}</option>`);
+      }
+      daySelect.innerHTML = opts.join('');
+    } else {
+      daySelect.innerHTML = '<option value="">كل الأيام</option>';
+    }
+  };
+
   [
     'regionFilter', 'cityFilter', 'repFilter', 'customerFilter', 'catFilter', 'productFilter',
     'yearFilter', 'monthFilter', 'periodFilter', 'dayFilter', 'comparisonFilter',
     'dataSourceFilter', 'salesOrderStatusFilter', 'dateFrom', 'dateTo'
   ].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', applyLiveFilters);
+    document.getElementById(id)?.addEventListener('change', (e) => {
+      // TC-01: Mutual Exclusivity
+      if (customControls.includes(id) && e.target.value) {
+        dateControls.forEach(cid => {
+          const c = document.getElementById(cid);
+          if (c) c.value = '';
+        });
+      } else if (dateControls.includes(id) && e.target.value) {
+        customControls.forEach(cid => {
+          const c = document.getElementById(cid);
+          if (c) c.value = '';
+        });
+      }
+
+      // TC-04: Dynamic Days
+      if (id === 'yearFilter' || id === 'monthFilter') {
+        populateDays();
+      }
+
+      applyLiveFilters();
+    });
   });
 
   document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th => {

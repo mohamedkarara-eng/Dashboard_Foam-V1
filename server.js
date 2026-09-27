@@ -263,28 +263,36 @@ async function getDateFacets(auth, source) {
   if (cached) return cached;
 
   const isSalesOrder = source === 'salesOrder';
-  const rows = await odooExecuteKw(
-    auth.uid,
-    auth.password,
-    isSalesOrder ? 'sale.order' : 'account.move',
-    'search_read',
-    [isSalesOrder ? [['date_order', '!=', false]] : [['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']], ['invoice_date', '!=', false]]],
-    { fields: [isSalesOrder ? 'date_order' : 'invoice_date'], limit: 10000, order: `${isSalesOrder ? 'date_order' : 'invoice_date'} asc` }
+  const dateField = isSalesOrder ? 'date_order' : 'invoice_date';
+  const domain = isSalesOrder 
+    ? [[dateField, '!=', false]] 
+    : [['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']], [dateField, '!=', false]];
+
+  // TC-03: Use read_group to efficiently fetch ALL available years without a limit
+  const yearGroups = await odooExecuteKw(
+    auth.uid, 
+    auth.password, 
+    isSalesOrder ? 'sale.order' : 'account.move', 
+    'read_group', 
+    [domain, [dateField], [`${dateField}:year`]]
   );
-  const dates = [...new Set(rows.map(row => String(row[isSalesOrder ? 'date_order' : 'invoice_date'] || '').slice(0, 10)).filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value)))];
+  
+  const years = [...new Set(yearGroups.map(g => g[`${dateField}:year`]).filter(Boolean))].sort().reverse();
   const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  
   const facets = {
-    years: [...new Set(dates.map(date => date.slice(0, 4)))].sort().reverse(),
-    months: [...new Set(dates.map(date => Number(date.slice(5, 7))))].sort((a, b) => a - b).map(value => ({ value: String(value), name: monthNames[value - 1] })),
-    periods: [...new Set(dates.map(date => `Q${Math.ceil(Number(date.slice(5, 7)) / 3)}`))].sort().map(value => ({ value, name: `الربع ${value.slice(1)}` })),
-    days: dates.map(value => ({ value, name: new Date(`${value}T00:00:00Z`).toLocaleDateString('ar-EG') }))
+    years,
+    months: monthNames.map((name, i) => ({ value: String(i + 1), name })),
+    periods: ['Q1', 'Q2', 'Q3', 'Q4'].map(value => ({ value, name: `الربع ${value.slice(1)}` })),
+    // Days will be handled dynamically in the frontend (TC-04)
+    days: [] 
   };
   setCached(cacheKey, facets, 30 * 60 * 1000);
   return facets;
 }
 
 function comparisonRange(start, end, mode) {
-  if (!start || !end) return null;
+  if (!start || !end || mode === 'none') return null;
   const sParts = String(start).split('-').map(Number);
   const eParts = String(end).split('-').map(Number);
   if (sParts.length !== 3 || eParts.length !== 3) return null;
@@ -490,8 +498,17 @@ async function buildSalesOrderOverview(auth, query) {
       && (!customerId || order.partner_id?.[0] === customerId)
       && (!search || [order.name, partner.name, partner.state, partner.city, order.user_id?.[1]].some(v => String(v || '').toLowerCase().includes(search)));
   });
+  
+  // TC-16: Safe fetching of lines (chunked) to prevent XML-RPC timeout/Memory Leak
   const orderIds = orders.map(o => o.id);
-  const lines = orderIds.length ? await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [[['order_id', 'in', orderIds], ['display_type', '=', false]]], { fields: ['order_id', 'product_id', 'product_uom_qty', 'price_subtotal'], limit: 50000 }) : [];
+  const lines = [];
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
+    const chunk = orderIds.slice(i, i + CHUNK_SIZE);
+    const chunkLines = await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [[['order_id', 'in', chunk], ['display_type', '=', false]]], { fields: ['order_id', 'product_id', 'product_uom_qty', 'price_subtotal'], limit: 50000 });
+    lines.push(...chunkLines);
+  }
+
   const productId = asPositiveId(query.product);
   const categoryId = asPositiveId(query.category);
   let filteredLines = lines;
@@ -503,12 +520,24 @@ async function buildSalesOrderOverview(auth, query) {
     const remainingIds = new Set(orders.map(order => order.id));
     filteredLines = lines.filter(line => remainingIds.has(line.order_id?.[0]) && (!productId || line.product_id?.[0] === productId));
   }
+  
+  // TC-13: Fetch invoice_date to calculate returns per month and accurately
   const invoiceIds = [...new Set(orders.flatMap(order => order.invoice_ids || []))];
-  const invoiceMoves = invoiceIds.length ? await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[['id', 'in', invoiceIds], ['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']]]], { fields: ['move_type', 'amount_total', 'amount_residual'], limit: 50000 }) : [];
+  const invoiceMoves = [];
+  for (let i = 0; i < invoiceIds.length; i += CHUNK_SIZE) {
+    const chunk = invoiceIds.slice(i, i + CHUNK_SIZE);
+    const chunkMoves = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[['id', 'in', chunk], ['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']]]], { fields: ['move_type', 'amount_total', 'amount_residual', 'invoice_date', 'name'], limit: 50000 });
+    invoiceMoves.push(...chunkMoves);
+  }
+  
   const gross = orders.reduce((sum, order) => sum + (order.amount_total || 0), 0);
+  const returns = invoiceMoves.reduce((sum, move) => sum + (move.move_type === 'out_refund' ? move.amount_total || 0 : 0), 0);
+  const returnsCount = invoiceMoves.filter(move => move.move_type === 'out_refund').length;
+  
   const invoiceCollected = invoiceMoves.reduce((sum, move) => sum + (move.move_type === 'out_invoice' ? 1 : -1) * ((move.amount_total || 0) - (move.amount_residual || 0)), 0);
   const collected = Math.min(gross, Math.max(0, invoiceCollected));
   const outstanding = Math.max(0, gross - collected);
+  
   const byProduct = new Map();
   filteredLines.forEach(line => {
     if (!line.product_id) return;
@@ -517,7 +546,6 @@ async function buildSalesOrderOverview(auth, query) {
   });
   const products = [...byProduct.values()].map(p => ({ ...p, amount: Math.round(p.amount), quantity: Math.round(p.quantity) }));
 
-  // Map quantities per partner from filtered lines
   const orderPartnerMap = new Map(orders.map(o => [o.id, o.partner_id?.[0]]));
   const partnerQtyMap = new Map();
   filteredLines.forEach(line => {
@@ -569,12 +597,59 @@ async function buildSalesOrderOverview(auth, query) {
       rate: gross ? Number((collected / gross * 100).toFixed(1)) : 0
     };
   }).sort((a, b) => b.sales - a.sales);
+  
   const repsList = [...reps.values()].map(rep => ({ ...rep, achieved: Math.round(rep.achieved), collected: null, remaining: null, target: null, percentage: null, theoreticalPercentage: null, theoreticalGap: null, actualGap: null, kpi: 'غير متاح: لا يوجد مصدر هدف معتمد' }));
   const customerRows = [...customers.values()].map(c => ({ ...c, sales: Math.round(c.sales), collected: null, outstanding: null, rate: null }));
-  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']; const monthlyGross = new Array(12).fill(0);
+  
+  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']; 
+  const monthlyGross = new Array(12).fill(0);
+  const monthlyReturns = new Array(12).fill(0);
+  
   orders.forEach(o => { const month = new Date(o.date_order).getUTCMonth(); if (month >= 0) monthlyGross[month] += o.amount_total || 0; });
+  invoiceMoves.forEach(m => { 
+    if (m.move_type === 'out_refund' && m.invoice_date) {
+      const month = new Date(m.invoice_date).getUTCMonth(); 
+      if (month >= 0) monthlyReturns[month] += m.amount_total || 0; 
+    } 
+  });
+  
+  const monthlyNet = monthlyGross.map((g, i) => Math.max(0, g - monthlyReturns[i]));
+  
   const dateFacets = await getDateFacets(auth, 'salesOrder');
-  return { status: 'success', source: 'salesOrder', timestamp: new Date().toISOString(), filters: { start, end, year }, kpis: { gross: Math.round(gross), returns: 0, net: Math.round(gross), collected: Math.round(collected), outstanding: Math.round(outstanding), invoicesCount: orders.length, returnsCount: 0, collectionRate: gross ? Number((collected / gross * 100).toFixed(1)) : 0, avgInvoice: orders.length ? Math.round(gross / orders.length) : 0 }, comparison: null, charts: { months, monthlyGross: monthlyGross.map(Math.round), monthlyReturns: new Array(12).fill(0), monthlyNet: monthlyGross.map(Math.round), topProducts: [...products].sort((a, b) => b.amount - a.amount).slice(0, 10), bottomProducts: [...products].sort((a, b) => a.amount - b.amount).slice(0, 10), regional: regions }, reps: repsList, returns: [], churn: [], drilldown: regions.map(region => ({ ...region, customers: customerRows.filter(c => c.state === region.name) })), filterOptions: { regions: [...new Set([...partners.values()].map(p => p.state))], cities: [...new Set([...partners.values()].map(p => p.city))], reps: [...reps.values()].map(r => ({ id: r.id, name: r.name })), customers: [...partners.values()].map(p => ({ id: p.id, name: p.name })), categories: [], products, ...dateFacets } };
+  return { 
+    status: 'success', 
+    source: 'salesOrder', 
+    timestamp: new Date().toISOString(), 
+    filters: { start, end, year }, 
+    kpis: { 
+      gross: Math.round(gross), 
+      returns: Math.round(returns), 
+      net: Math.round(gross - returns), 
+      collected: Math.round(collected), 
+      outstanding: Math.round(outstanding), 
+      invoicesCount: orders.length, 
+      returnsCount: returnsCount, 
+      collectionRate: gross ? Number((collected / gross * 100).toFixed(1)) : 0, 
+      avgInvoice: orders.length ? Math.round((gross - returns) / orders.length) : 0 
+    }, 
+    comparison: null, 
+    charts: { 
+      months, 
+      monthlyGross: monthlyGross.map(Math.round), 
+      monthlyReturns: monthlyReturns.map(Math.round), 
+      monthlyNet: monthlyNet.map(Math.round), 
+      topProducts: [...products].sort((a, b) => b.amount - a.amount).slice(0, 10), 
+      bottomProducts: [...products].sort((a, b) => a.amount - b.amount).slice(0, 10), 
+      regional: regions 
+    }, 
+    reps: repsList, 
+    returns: invoiceMoves.filter(m => m.move_type === 'out_refund').map((m, i) => ({
+       id: m.id, creditNote: m.name || `CN-${String(i + 1).padStart(4, '0')}`, product: 'متعدد', category: 'متعدد', customer: 'غير محدد', rep: 'غير محدد', region: 'غير محدد', date: m.invoice_date, returnedQty: 0, returns: Math.round(m.amount_total || 0), returnOnSystem: true
+    })), 
+    churn: [], 
+    drilldown: regions.map(region => ({ ...region, customers: customerRows.filter(c => c.state === region.name) })), 
+    filterOptions: { regions: [...new Set([...partners.values()].map(p => p.state))], cities: [...new Set([...partners.values()].map(p => p.city))], reps: [...reps.values()].map(r => ({ id: r.id, name: r.name })), customers: [...partners.values()].map(p => ({ id: p.id, name: p.name })), categories: [], products, ...dateFacets } 
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -849,18 +924,19 @@ app.get('/api/dashboard/overview', async (req, res) => {
     if (productId) lineDomain.push(['product_id', '=', productId]);
     if (categoryId) lineDomain.push(['product_id.categ_id', 'child_of', categoryId]);
 
+    const metricSortField = req.query.metric === 'quantity' ? 'quantity' : 'price_subtotal';
     const [topProductsSales, bottomProductsSales] = await Promise.all([
       odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
         lineDomain,
         ['price_subtotal:sum', 'quantity:sum'],
         ['product_id'],
-        0, 10, 'price_subtotal desc'
+        0, 10, `${metricSortField} desc`
       ]),
       odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
         lineDomain,
         ['price_subtotal:sum', 'quantity:sum'],
         ['product_id'],
-        0, 10, 'price_subtotal asc'
+        0, 10, `${metricSortField} asc`
       ])
     ]);
 
