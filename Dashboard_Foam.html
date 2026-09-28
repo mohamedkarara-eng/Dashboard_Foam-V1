@@ -1219,11 +1219,7 @@
     </div>
     <div class="divider"></div>
 
-    <!-- Search -->
-    <div class="search-bar">
-      <span class="search-icon">🔍</span>
-      <input type="text" placeholder="البحث في العملاء، المناطق، المنتجات..." id="globalSearch" />
-    </div>
+
 
     <!-- Actions -->
     <div class="header-actions">
