@@ -597,7 +597,7 @@ function renderProductChart(charts) {
       datasets: [{
         label: isQty ? 'الكمية المباعة (قطعة)' : 'المبيعات (ج.م)',
         data: values,
-        backgroundColor: isTop ? '#E65100' : '#CC4800',
+        backgroundColor: isTop ? '#d6aa5b' : '#b86b5c',
         borderRadius: 4
       }]
     },
@@ -717,7 +717,7 @@ function renderGrowthChart(charts) {
     }));
 
     const isGrowth = grouping === 'growth';
-    const currColor = isGrowth ? '#00C853' : '#DC2626';
+    const currColor = isGrowth ? '#22c55e' : '#ef4444';
     const currLabel = isGrowth ? 'مبيعات الفترة الحالية (نمو)' : 'مبيعات الفترة الحالية (تراجع)';
 
     liveDashboard.charts.growth = new Chart(canvas, {
@@ -842,8 +842,8 @@ function renderGrowthChart(charts) {
       {
         label: 'مبيعات الفترة الحالية',
         data: netData,
-        borderColor: '#E65100',
-        backgroundColor: 'rgba(230,81,0,0.16)',
+        borderColor: '#d6aa5b',
+        backgroundColor: 'rgba(214,170,91,0.16)',
         fill: true,
         tension: 0.35
       }
@@ -853,7 +853,7 @@ function renderGrowthChart(charts) {
       datasets.push({
         label: compLegend,
         data: comparisonData,
-        borderColor: '#8B929E',
+        borderColor: '#70aaa2',
         borderDash: [5, 5],
         tension: 0.35,
         fill: false
@@ -911,8 +911,8 @@ function renderRegionalChart(charts) {
     data: {
       labels,
       datasets: [
-        { label: isQty ? 'إجمالي الكمية المباعة' : 'المبيعات', data: primaryData, backgroundColor: '#8B929E' },
-        { label: isQty ? 'صافي الكمية المباعة' : 'المحصل', data: secondaryData, backgroundColor: '#E65100' }
+        { label: isQty ? 'إجمالي الكمية المباعة' : 'المبيعات', data: primaryData, backgroundColor: '#70aaa2' },
+        { label: isQty ? 'صافي الكمية المباعة' : 'المحصل', data: secondaryData, backgroundColor: '#d6aa5b' }
       ]
     },
     options: {
