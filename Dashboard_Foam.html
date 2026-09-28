@@ -15,26 +15,32 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      /* ─── Luxury High-Contrast Slate & Kinpaku Gold Palette ─── */
-      --ks-kinpaku: #f59e0b;
-      --ks-kinpaku-rich: #d97706;
-      --ks-patina: #06b6d4;
-      --ks-patina-deep: #0891b2;
-      --ks-lacquer: #0f172a;        /* Elevated Slate Navy instead of pitch black */
-      --ks-lacquer-deep: #090e17;   /* Deep slate for header / inputs */
-      --ks-raised: #1e293b;         /* Crisp card surface */
-      --ks-graphite: #273549;       /* Secondary card surface & hover */
-      --ks-graphite-2: #334155;     /* Borders & toggle tracks */
-      --ks-champagne: #f8fafc;      /* Crisp pure white headings */
-      --ks-text-warm: #e2e8f0;       /* Readable light body */
-      --ks-text-muted: #94a3b8;      /* Clear readable secondary text */
-      --ks-rule: rgba(148, 163, 184, 0.2);
-      --ks-rule-strong: rgba(245, 158, 11, 0.45);
-      --ks-warning: #ef4444;
-      --ks-success: #10b981;
-      --card-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.3), 0 2px 6px -2px rgba(0, 0, 0, 0.2);
-      --card-shadow-hover: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 4px 10px -2px rgba(0, 0, 0, 0.25);
-
+      /* ─── Premium 3D Glassmorphism Dark Mode ─── */
+      --ks-kinpaku: #4F46E5;        /* Deep Indigo */
+      --ks-kinpaku-rich: #6366F1;   /* Vibrant Indigo */
+      --ks-patina: #0EA5E9;         /* Sky Blue */
+      --ks-patina-deep: #0284C7;
+      
+      --ks-lacquer: #0f111a;        /* Very dark navy background */
+      --ks-lacquer-deep: rgba(15, 17, 26, 0.75); /* Glassy Header */
+      --ks-raised: rgba(30, 33, 43, 0.65);       /* Glassy Cards */
+      --ks-graphite: rgba(45, 49, 63, 0.8);      /* Secondary Glass */
+      --ks-graphite-2: #334155;                  /* Solid border bases */
+      
+      --ks-champagne: #F8FAFC;      /* Primary text */
+      --ks-text-warm: #E2E8F0;      /* Secondary text */
+      --ks-text-muted: #94A3B8;     /* Muted text */
+      
+      --ks-rule: rgba(255, 255, 255, 0.1);
+      --ks-rule-strong: rgba(255, 255, 255, 0.2);
+      
+      --ks-warning: #EF4444;
+      --ks-success: #10B981;
+      
+      /* 3D Shadows & Highlights */
+      --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255,255,255,0.1);
+      --card-shadow-hover: 0 12px 48px 0 rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255,255,255,0.2), 0 0 0 1px var(--ks-kinpaku-rich);
+      
       --bg: var(--ks-lacquer);
       --bg-card: var(--ks-raised);
       --bg-card2: var(--ks-graphite);
@@ -49,30 +55,36 @@
       --green: var(--ks-success);
       --red: var(--ks-warning);
       --amber: var(--ks-kinpaku-rich);
-      --purple: #8b5cf6;
+      --purple: #8B5CF6;
       --teal: var(--ks-patina);
     }
 
-    /* ─── Light Mode Support ─── */
     [data-theme="light"] {
-      --ks-kinpaku: #d97706;
-      --ks-kinpaku-rich: #b45309;
-      --ks-patina: #0891b2;
-      --ks-patina-deep: #0e7490;
-      --ks-lacquer: #f1f5f9;
-      --ks-lacquer-deep: #ffffff;
-      --ks-raised: #ffffff;
-      --ks-graphite: #e2e8f0;
-      --ks-graphite-2: #cbd5e1;
-      --ks-champagne: #0f172a;
-      --ks-text-warm: #1e293b;
-      --ks-text-muted: #64748b;
-      --ks-rule: #cbd5e1;
-      --ks-rule-strong: #d97706;
-      --ks-warning: #dc2626;
+      /* ─── Premium 3D Neumorphism Light Mode ─── */
+      --ks-kinpaku: #4F46E5;
+      --ks-kinpaku-rich: #4338CA;
+      --ks-patina: #0EA5E9;
+      --ks-patina-deep: #0369A1;
+      
+      --ks-lacquer: #E0E5EC;        /* Neumorphic grayish base */
+      --ks-lacquer-deep: rgba(224, 229, 236, 0.85);
+      --ks-raised: rgba(230, 235, 240, 0.6);
+      --ks-graphite: rgba(240, 243, 248, 0.8);
+      --ks-graphite-2: #CBD5E1;
+      
+      --ks-champagne: #0F172A;
+      --ks-text-warm: #1E293B;
+      --ks-text-muted: #64748B;
+      
+      --ks-rule: rgba(255, 255, 255, 0.5);
+      --ks-rule-strong: rgba(0, 0, 0, 0.1);
+      
+      --ks-warning: #DC2626;
       --ks-success: #059669;
-      --card-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
-      --card-shadow-hover: 0 8px 24px -4px rgba(15, 23, 42, 0.12), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
+      
+      /* Neumorphic 3D Light Shadows */
+      --card-shadow: 9px 9px 16px rgba(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.5), inset 0 1px 1px rgba(255,255,255,1);
+      --card-shadow-hover: 12px 12px 20px rgba(163,177,198,0.7), -12px -12px 20px rgba(255,255,255, 0.6), inset 0 1px 2px rgba(255,255,255,1);
 
       --bg: var(--ks-lacquer);
       --bg-card: var(--ks-raised);
@@ -136,7 +148,7 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       transition: background-color 0.25s ease, border-color 0.25s ease;
-    }
+     backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 4px 20px rgba(0,0,0,0.15); border-bottom: 1px solid var(--ks-rule-strong); }
     .header-top {
       display: flex; align-items: center; gap: 14px;
       padding: 8px 24px;
@@ -195,7 +207,7 @@
       color: var(--ks-champagne); font-size: 16px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       transition: all 0.2s;
-    }
+     box-shadow: var(--card-shadow); backdrop-filter: blur(8px); border-radius: 10px; border: 1px solid var(--ks-rule); }
     .theme-btn:hover { border-color: var(--ks-kinpaku); transform: scale(1.05); }
 
     .notif-btn {
@@ -340,12 +352,12 @@
       transition: all 0.2s ease;
       white-space: nowrap;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    }
+     background: linear-gradient(135deg, var(--ks-kinpaku-rich), var(--ks-kinpaku)); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4), inset 0 2px 4px rgba(255,255,255,0.3); border: none; color: #fff; border-radius: 8px; }
     .apply-filters-btn:hover {
       background: linear-gradient(135deg, #e0b86c, #cb9f4e);
       box-shadow: 0 4px 12px rgba(214, 170, 91, 0.35);
       transform: translateY(-1px);
-    }
+     box-shadow: 0 6px 16px rgba(79, 70, 229, 0.6), inset 0 2px 4px rgba(255,255,255,0.4); transform: translateY(-2px); }
     .apply-filters-btn:active {
       transform: translateY(0);
     }
@@ -574,7 +586,7 @@
       box-shadow: var(--card-shadow);
       position: relative; overflow: hidden;
       transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-    }
+     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px; border: 1px solid var(--ks-rule); }
     .kpi-card:hover {
       transform: translateY(-2px);
       box-shadow: var(--card-shadow-hover);
@@ -624,7 +636,7 @@
       transform: scale(1.08);
       border-color: var(--ks-kinpaku);
       transition: transform 0.2s ease, border-color 0.2s ease;
-    }
+     box-shadow: inset 2px 2px 4px rgba(255,255,255,0.1), 0 4px 8px rgba(0,0,0,0.2); border-radius: 12px; }
     .kpi-drill-btn {
       display: inline-flex;
       align-items: center;
@@ -774,7 +786,7 @@
       background: var(--ks-raised); border: 1px solid var(--ks-rule);
       border-radius: 8px; padding: 20px; box-shadow: var(--card-shadow);
       display: flex; flex-direction: column; gap: 14px;
-    }
+     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 16px; border: 1px solid var(--ks-rule); }
     .chart-detail-card {
       background: var(--ks-lacquer-deep); border: 1px solid var(--ks-rule-strong);
       border-radius: 6px; padding: 12px 14px; display: grid;
