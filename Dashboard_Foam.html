@@ -1644,7 +1644,7 @@
           <span class="table-hint">— انقر على الصف لتوسيعه</span>
         </div>
         <div class="table-toolbar-right">
-          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع"><option value="region" selected>المنطقة</option><option value="city">المدينة</option><option value="rep">المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
+          <div id="cascadingFiltersContainer" style="display:flex; flex-direction:column; gap:6px; min-width: 160px; margin-left: 8px;"></div>
           <button class="tbl-btn" onclick="toggleRepSort()">ترتيب المندوبين</button>
           <button class="tbl-btn" onclick="expandAll()">توسيع الكل</button>
           <button class="tbl-btn" onclick="collapseAll()">طي الكل</button>
