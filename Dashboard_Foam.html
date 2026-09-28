@@ -14,26 +14,31 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    :root {
-      /* ─── Luxury High-Contrast Slate & Kinpaku Gold Palette ─── */
-      --ks-kinpaku: #f59e0b;
-      --ks-kinpaku-rich: #d97706;
-      --ks-patina: #06b6d4;
-      --ks-patina-deep: #0891b2;
-      --ks-lacquer: #0f172a;        /* Elevated Slate Navy instead of pitch black */
-      --ks-lacquer-deep: #090e17;   /* Deep slate for header / inputs */
-      --ks-raised: #1e293b;         /* Crisp card surface */
-      --ks-graphite: #273549;       /* Secondary card surface & hover */
-      --ks-graphite-2: #334155;     /* Borders & toggle tracks */
-      --ks-champagne: #f8fafc;      /* Crisp pure white headings */
-      --ks-text-warm: #e2e8f0;       /* Readable light body */
-      --ks-text-muted: #94a3b8;      /* Clear readable secondary text */
-      --ks-rule: rgba(148, 163, 184, 0.2);
-      --ks-rule-strong: rgba(245, 158, 11, 0.45);
-      --ks-warning: #ef4444;
-      --ks-success: #10b981;
-      --card-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.3), 0 2px 6px -2px rgba(0, 0, 0, 0.2);
-      --card-shadow-hover: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 4px 10px -2px rgba(0, 0, 0, 0.25);
+    :root, [data-theme='light'], [data-theme='dark'] {
+      /* ─── Direction 1: The "Executive Boardroom" (Modern Warm Light) ─── */
+      --ks-kinpaku: #0A2540;
+      --ks-kinpaku-rich: #06192e;
+      --ks-patina: #0A2540;
+      --ks-patina-deep: #06192e;
+      
+      --ks-lacquer: #F8F9FA;
+      --ks-lacquer-deep: #FFFFFF;
+      --ks-raised: #FFFFFF;
+      --ks-graphite: #F4F5F7;
+      --ks-graphite-2: #E5E7EB;
+      
+      --ks-champagne: #111827;
+      --ks-text-warm: #374151;
+      --ks-text-muted: #6B7280;
+      
+      --ks-rule: #E5E7EB;
+      --ks-rule-strong: #D1D5DB;
+      
+      --ks-warning: #DC2626;
+      --ks-success: #059669;
+      
+      --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+      --card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
 
       --bg: var(--ks-lacquer);
       --bg-card: var(--ks-raised);
@@ -49,39 +54,8 @@
       --green: var(--ks-success);
       --red: var(--ks-warning);
       --amber: var(--ks-kinpaku-rich);
-      --purple: #8b5cf6;
+      --purple: #0A2540;
       --teal: var(--ks-patina);
-    }
-
-    /* ─── Light Mode Support ─── */
-    [data-theme="light"] {
-      --ks-kinpaku: #d97706;
-      --ks-kinpaku-rich: #b45309;
-      --ks-patina: #0891b2;
-      --ks-patina-deep: #0e7490;
-      --ks-lacquer: #f1f5f9;
-      --ks-lacquer-deep: #ffffff;
-      --ks-raised: #ffffff;
-      --ks-graphite: #e2e8f0;
-      --ks-graphite-2: #cbd5e1;
-      --ks-champagne: #0f172a;
-      --ks-text-warm: #1e293b;
-      --ks-text-muted: #64748b;
-      --ks-rule: #cbd5e1;
-      --ks-rule-strong: #d97706;
-      --ks-warning: #dc2626;
-      --ks-success: #059669;
-      --card-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
-      --card-shadow-hover: 0 8px 24px -4px rgba(15, 23, 42, 0.12), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
-
-      --bg: var(--ks-lacquer);
-      --bg-card: var(--ks-raised);
-      --bg-card2: var(--ks-graphite);
-      --border: var(--ks-rule);
-      --border2: var(--ks-rule);
-      --text: var(--ks-text-warm);
-      --text2: var(--ks-champagne);
-      --text3: var(--ks-text-muted);
     }
 
     html {
