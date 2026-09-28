@@ -1026,383 +1026,173 @@ function toggleRegionDrill(regionName) {
   renderDrilldownTable(liveDashboard.data?.drilldown);
 }
 
-function renderDrilldownTable(drilldown) {
-  const tbody = document.getElementById('drillTableBody');
-  if (!tbody || !drilldown) return;
 
-  const rows = [];
-  let totalInvoices = 0;
-  let totalGrossQty = 0;
-  let totalReturnedQty = 0;
-  let totalNetQty = 0;
-  let totalSales = 0;
-  let totalCollected = 0;
-  let totalOutstanding = 0;
+let selectedGroupByOrder = ['region'];
+let groupBySelectionHistory = [];
 
-  drilldown.forEach(reg => {
-    const isExpanded = liveDashboard.expandedRegions.has(reg.name);
-    const escapedReg = reg.name.replace(/'/g, "\\'");
-    totalInvoices += (reg.invoices || 0);
-    totalGrossQty += (reg.grossQty || 0);
-    totalReturnedQty += (reg.returnedQty || 0);
-    totalNetQty += (reg.netQty || 0);
-    totalSales += (reg.sales || 0);
-    totalCollected += (reg.collected || 0);
-    totalOutstanding += (reg.outstanding || 0);
-
-    rows.push(`
-      <tr class="level-state" onclick="toggleRegionDrill('${escapedReg}')">
-        <td>
-          <div class="row-indent">
-            <span class="row-expand expandable ${isExpanded ? 'expanded' : ''}">${isExpanded ? '▼' : '▶'}</span>
-            <span class="row-icon">📍</span>
-            <span class="row-name state">${reg.name}</span>
-          </div>
-        </td>
-        <td class="center">${formatCount(reg.invoices)}</td>
-        <td class="center val-normal">${formatNumber(reg.grossQty || 0)}</td>
-        <td class="center val-red">${formatNumber(reg.returnedQty || 0)}</td>
-        <td class="center val-blue">${formatNumber(reg.netQty || 0)}</td>
-        <td class="left val-blue">${formatMoney(reg.sales)}</td>
-        <td class="left val-red">${formatMoney(reg.returnedQty ? (reg.sales * (reg.returnedQty / (reg.grossQty || 1))) : 0)}</td>
-        <td class="left val-blue">${formatMoney(reg.sales)}</td>
-        <td class="left val-green">${formatMoney(reg.collected)}</td>
-        <td class="left val-warn">${formatMoney(reg.outstanding)}</td>
-        <td class="center">
-          <div class="rate-wrap">
-            <div class="rate-bar"><div class="rate-fill ${reg.rate >= 50 ? 'good' : 'bad'}" style="width:${Math.min(reg.rate, 100)}%;"></div></div>
-            <span class="rate-pct ${reg.rate >= 50 ? 'good' : 'bad'}">${reg.rate}٪</span>
-          </div>
-        </td>
-      </tr>
-    `);
-
-    if (isExpanded && reg.customers) {
-      reg.customers.forEach(cust => {
-        rows.push(`
-          <tr class="level-cust">
-            <td style="padding-right: 48px;">
-              <div class="row-indent">
-                <span class="row-expand leaf">•</span>
-                <span class="row-icon">👤</span>
-                <div>
-                  <span class="row-name cust">${cust.name}</span>
-                  <div class="row-subrep">المندوب: ${cust.rep} | المدينة: ${cust.city}</div>
-                </div>
-              </div>
-            </td>
-            <td class="center">${formatCount(cust.invoices)}</td>
-            <td class="center val-normal">${formatNumber(cust.grossQty || 0)}</td>
-            <td class="center val-red">${formatNumber(cust.returnedQty || 0)}</td>
-            <td class="center val-blue">${formatNumber(cust.netQty || 0)}</td>
-            <td class="left val-blue">${formatMoney(cust.sales)}</td>
-            <td class="left val-red">0 ج.م</td>
-            <td class="left val-blue">${formatMoney(cust.sales)}</td>
-            <td class="left val-green">${formatMoney(cust.collected)}</td>
-            <td class="left val-warn">${formatMoney(cust.outstanding)}</td>
-            <td class="center">
-              <span class="rate-pct ${cust.rate >= 50 ? 'good' : 'bad'}">${cust.rate}٪</span>
-            </td>
-          </tr>
-        `);
-      });
+function updateGroupByOrder(e) {
+  const select = e.target;
+  const currentSelections = Array.from(select.selectedOptions).map(o => o.value);
+  
+  // Find what was added
+  currentSelections.forEach(val => {
+    if (!groupBySelectionHistory.includes(val)) {
+      groupBySelectionHistory.push(val);
     }
   });
-
-  tbody.innerHTML = rows.join('');
-
-  // Update footer totals
-  const tfoot = document.querySelector('.table-card table tfoot');
-  if (tfoot) {
-    const totalRate = totalSales ? Number((totalCollected / totalSales * 100).toFixed(1)) : 0;
-    tfoot.innerHTML = `
-      <tr>
-        <td style="color:#e2e8f0;font-weight:700;">الإجمالي الكلي</td>
-        <td class="center val-normal" style="font-weight:700;">${formatCount(totalInvoices)}</td>
-        <td class="center val-normal" style="font-weight:700;">${formatNumber(totalGrossQty)}</td>
-        <td class="center val-red" style="font-weight:700;">${formatNumber(totalReturnedQty)}</td>
-        <td class="center val-blue" style="font-weight:700;">${formatNumber(totalNetQty)}</td>
-        <td class="left val-blue" style="font-weight:700;">${formatMoney(totalSales)}</td>
-        <td class="left val-red" style="font-weight:700;">${formatMoney(liveDashboard.data?.kpis?.returns || 0)}</td>
-        <td class="left val-blue" style="font-weight:700;">${formatMoney(liveDashboard.data?.kpis?.net || totalSales)}</td>
-        <td class="left val-green" style="font-weight:700;">${formatMoney(totalCollected)}</td>
-        <td class="left val-warn" style="font-weight:700;">${formatMoney(totalOutstanding)}</td>
-        <td class="center">
-          <div class="rate-wrap">
-            <div class="rate-bar"><div class="rate-fill ${totalRate >= 50 ? 'good' : 'bad'}" style="width:${Math.min(totalRate, 100)}%;"></div></div>
-            <span class="rate-pct ${totalRate >= 50 ? 'good' : 'bad'}">${totalRate}٪</span>
-          </div>
-        </td>
-      </tr>
-    `;
+  // Find what was removed
+  groupBySelectionHistory = groupBySelectionHistory.filter(val => currentSelections.includes(val));
+  
+  if (groupBySelectionHistory.length === 0) {
+    selectedGroupByOrder = ['region']; // default fallback
+  } else {
+    selectedGroupByOrder = [...groupBySelectionHistory];
   }
+  
+  // Ensure the select visual reflects selection (though native multiple select shows checkboxes)
+  renderDrilldownTable(liveDashboard.data?.drilldown);
 }
 
-function renderReturnsTable(returns) {
-  const tbody = document.getElementById('returnsTableBody');
-  if (!tbody) return;
-  window._lastReturnsData = returns || [];
-
-  if (!returns || !returns.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--ks-text-muted);padding:24px;">لا توجد مرتجعات مسجلة في الفترة المحددة</td></tr>';
-    return;
+// Add event listener manually when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const gb = document.getElementById('groupByFilter');
+  if (gb) {
+    gb.addEventListener('change', updateGroupByOrder);
+    // Initialize history based on DOM
+    groupBySelectionHistory = Array.from(gb.selectedOptions).map(o => o.value);
+    if(groupBySelectionHistory.length) selectedGroupByOrder = [...groupBySelectionHistory];
   }
+});
 
-  tbody.innerHTML = returns.map(r => {
-    const odooLink = r.odooLink || (r.moveId ? `https://www.shekhfoam.com/web#id=${r.moveId}&model=account.move&view_type=form` : '');
-    const clickAttr = odooLink ? `onclick="window.open('${odooLink}', '_blank')"` : '';
-    const rowTitle = odooLink ? `انقر للانتقال لمستند المرتجع في أودو (${r.creditNote || ''}) ↗` : '';
-
-    return `
-      <tr class="clickable-return-row" ${clickAttr} title="${rowTitle}">
-        <td>
-          <div style="display:flex;flex-direction:column;gap:3px;">
-            <span style="font-weight:700;color:var(--ks-champagne);">${r.product}</span>
-            ${odooLink ? `
-              <a href="${odooLink}" target="_blank" rel="noopener noreferrer" class="odoo-direct-link" style="font-size:11px;" onclick="event.stopPropagation()" title="فتح إشعار الخصم في Odoo">
-                <span>${r.creditNote || 'إشعار خصم'}</span> <span style="font-size:10px;">↗</span>
-              </a>
-            ` : (r.creditNote ? `<span style="font-size:11px;color:var(--ks-text-muted);font-family:monospace;">${r.creditNote}</span>` : '')}
-          </div>
-        </td>
-        <td><span style="font-size:12px;color:var(--ks-text-muted);">${r.category || 'غير محدد'}</span></td>
-        <td><strong>${r.customer || 'غير محدد'}</strong></td>
-        <td>${r.rep || 'غير محدد'}</td>
-        <td>${r.region || 'غير محدد'}</td>
-        <td style="font-weight:600;">${formatNumber(r.returnedQty)}</td>
-        <td class="ret-amt">${formatMoney(r.returns)}</td>
-        <td>
-          ${odooLink ? `
-            <a href="${odooLink}" target="_blank" rel="noopener noreferrer" class="odoo-action-btn" onclick="event.stopPropagation()" title="انتقال مباشر لشاشة المستند في أودو">
-              فتح في Odoo ↗
-            </a>
-          ` : '—'}
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-function renderChurnWarnings(churn) {
-  const select = document.getElementById('churnCustomerFilter');
-  const detail = document.getElementById('churnDetail');
-  const badgeTexts = document.querySelectorAll('.churn-badge-text');
-  const warnings = churn || [];
-  liveDashboard.churnWarnings = warnings;
-
-  if (badgeTexts) {
-    badgeTexts.forEach(n => { n.textContent = warnings.length + ' تحذيرات'; });
+function groupFlatDataRecursively(flatData, keys, depth = 0) {
+  if (depth >= keys.length || !flatData || flatData.length === 0) {
+    return { isLeaf: true, children: flatData };
   }
-
-  if (document.getElementById('churnModalOverlay')?.classList.contains('active')) {
-    renderChurnModalContent();
-  }
-
-  if (!select || !detail) return;
-  if (!warnings.length) {
-    select.innerHTML = '<option value="">لا توجد تحذيرات حالياً</option>';
-    detail.textContent = 'لا توجد تحذيرات تراجع تتجاوز العتبة المحددة';
-    return;
-  }
-
-  select.innerHTML = warnings.map((warning, index) => `<option value="${index}">${warning.name} | ${warning.growthPercent}%</option>`).join('');
-  const renderWarning = () => {
-    const warning = warnings[Number(select.value) || 0];
-    if (!warning) return;
-    detail.className = `churn-item ${warning.risk === 'مرتفع' ? 'high' : 'medium'}`;
-    detail.textContent = `${warning.name} | ${warning.state} | الحالية: ${formatMoney(warning.currentSales)} | السابقة: ${formatMoney(warning.previousSales)} | التراجع: ${warning.growthPercent}% | الخطورة: ${warning.risk}`;
+  
+  const currentKey = keys[depth];
+  // Map our UI keys to the backend property names
+  const propMap = {
+    region: 'state',
+    city: 'city',
+    rep: 'rep',
+    customer: 'name',
+    category: 'category',
+    product: 'product'
   };
-  select.onchange = renderWarning;
-  renderWarning();
-}
+  const propName = propMap[currentKey] || currentKey;
 
-function renderComparisonMatrix(kpis, previous = null) {
-  const tbody = document.querySelector('#comparisonMatrix tbody');
-  if (!tbody || !kpis) return;
-  window._lastComparisonData = { kpis, previous };
-
-  const isNone = liveDashboard.filters.comparison === 'none' || !previous || (previous.gross === undefined && previous.invoicesCount === undefined);
-  const isLastYear = liveDashboard.filters.comparison === 'samePeriodLastYear';
-  const compHeader = document.getElementById('comparisonMatrixHeader');
-  if (compHeader) {
-    compHeader.textContent = isNone ? 'بدون مقارنة' : (isLastYear ? 'نفس الفترة من العام الماضي' : 'الفترة السابقة');
-  }
-
-  const change = (current, prior) => {
-    if (prior === undefined || prior === null) return '—';
-    if (prior === 0) return current > 0 ? '+100%' : '0.0%';
-    const value = ((current - prior) / Math.abs(prior)) * 100;
-    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
-  };
-  const isQty = liveDashboard.metric === 'quantity';
-  const isSO = liveDashboard.filters.source === 'salesOrder';
-  const drilldown = liveDashboard.data?.drilldown || [];
-  const grossQty = kpis.grossQty ?? drilldown.reduce((sum, r) => sum + (r.grossQty || 0), 0);
-  const returnsQty = kpis.returnsQty ?? drilldown.reduce((sum, r) => sum + (r.returnedQty || 0), 0);
-  const netQty = kpis.netQty ?? Math.max(0, grossQty - returnsQty);
-  const avgQty = kpis.invoicesCount ? (netQty / kpis.invoicesCount) : 0;
-
-  const totalMovesCount = isSO ? kpis.invoicesCount : (kpis.totalPostedCount || (kpis.invoicesCount + kpis.returnsCount));
-  const prevTotalMovesCount = isSO ? previous?.invoicesCount : (previous?.totalPostedCount || ((previous?.invoicesCount || 0) + (previous?.returnsCount || 0)));
-
-  const rawRows = isQty ? [
-    ['إجمالي الكميات المباعة', grossQty, previous?.grossQty, false, 'قطعة', false],
-    ['إجمالي الكميات المرتجعة', returnsQty, previous?.returnsQty, false, 'قطعة', false],
-    ['صافي الكميات المباعة', netQty, previous?.netQty, false, 'قطعة', false],
-    [isSO ? 'عدد أوامر البيع' : 'عدد الحركات المعتمدة (Posted)', totalMovesCount, prevTotalMovesCount, false, isSO ? 'أمر' : 'حركة', true],
-    [isSO ? 'متوسط كمية أمر البيع' : 'متوسط كمية الفاتورة', avgQty, null, false, 'قطعة', false],
-    ['المبالغ المحصلة (ج.م)', kpis.collected, previous?.collected, true, '', false],
-    [isSO ? 'المبيعات غير المحصلة (ج.م)' : 'المديونية القائمة (ج.م)', kpis.outstanding, previous?.outstanding, true, '', false],
-    ['إجمالي المبيعات (ج.م)', kpis.gross, previous?.gross, true, '', false]
-  ] : [
-    ['إجمالي المبيعات', kpis.gross, previous?.gross, true, '', false],
-    ['إجمالي المرتجعات', kpis.returns, previous?.returns, true, '', false],
-    ['صافي المبيعات', kpis.net, previous?.net, true, '', false],
-    ['المبالغ المحصلة', kpis.collected, previous?.collected, true, '', false],
-    [isSO ? 'المبيعات غير المحصلة' : 'المديونية القائمة', kpis.outstanding, previous?.outstanding, true, '', false],
-    [isSO ? 'عدد أوامر البيع' : 'عدد الحركات المعتمدة (Posted)', totalMovesCount, prevTotalMovesCount, false, isSO ? 'أمر' : 'حركة', true],
-    [isSO ? 'متوسط أمر البيع' : 'متوسط قيمة الفاتورة', kpis.avgInvoice, previous?.avgInvoice, true, '', false]
-  ];
-
-  const rows = rawRows.map(([label, current, prior, money, unit, isCount]) => {
-    const hasPrior = !isNone && prior !== undefined && prior !== null;
-    const formatVal = (v) => isCount
-      ? (formatCount(v) + (unit ? ' ' + unit : ''))
-      : (money ? formatMoney(v) : (formatNumber(v) + (unit ? ' ' + unit : '')));
-    const priorFormatted = hasPrior ? formatVal(prior) : '—';
-    const delta = hasPrior ? change(current, prior) : '—';
-    return [label, formatVal(current), priorFormatted, delta];
+  const grouped = new Map();
+  flatData.forEach(row => {
+    const val = row[propName] || 'غير محدد';
+    if (!grouped.has(val)) {
+      grouped.set(val, []);
+    }
+    grouped.get(val).push(row);
   });
 
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td>${r[0]}</td>
-      <td><strong>${r[1]}</strong></td>
-      <td>${r[2]}</td>
-      <td class="${r[3].startsWith('+') ? 'val-green' : (r[3] === '—' ? '' : 'val-red')}">${r[3]}</td>
+  const result = [];
+  grouped.forEach((groupRows, keyName) => {
+    // Calculate aggregate metrics for this group
+    let invoices = 0, grossQty = 0, returnedQty = 0, netQty = 0, sales = 0, collected = 0, outstanding = 0;
+    groupRows.forEach(r => {
+      invoices += (r.invoices || 0);
+      grossQty += (r.grossQty || 0);
+      returnedQty += (r.returnedQty || 0);
+      netQty += (r.netQty || 0);
+      sales += (r.sales || 0);
+      collected += (r.collected || 0);
+      outstanding += (r.outstanding || 0);
+    });
+    const rate = sales ? Number((collected / sales * 100).toFixed(1)) : 0;
+    
+    // Create an ID path for toggling
+    const id = btoa(unescape(encodeURIComponent(keyName + depth)));
+    
+    result.push({
+      isLeaf: false,
+      keyName,
+      levelKey: currentKey,
+      id,
+      invoices, grossQty, returnedQty, netQty, sales, collected, outstanding, rate,
+      childrenGroup: groupFlatDataRecursively(groupRows, keys, depth + 1)
+    });
+  });
+  
+  // Sort by sales descending
+  result.sort((a, b) => b.sales - a.sales);
+  return { isLeaf: false, children: result };
+}
+
+function renderTreeGroup(node, depth) {
+  let html = '';
+  const padding = depth * 20;
+  const isExpanded = liveDashboard.expandedRegions.has(node.id);
+  const icon = depth === 0 ? '📍' : (depth === 1 ? '🏙️' : (depth === 2 ? '👤' : '📁'));
+  const colorClass = depth === 0 ? 'state' : 'cust';
+  
+  const expandIcon = node.childrenGroup && !node.childrenGroup.isLeaf ? (isExpanded ? '▼' : '▶') : '•';
+  
+  html += `
+    <tr class="level-${colorClass}" ${node.childrenGroup && !node.childrenGroup.isLeaf ? `onclick="toggleRegionDrill('${node.id}')"` : ''} style="cursor:pointer;">
+      <td>
+        <div class="row-indent" style="padding-right: ${padding}px;">
+          <span class="row-expand ${isExpanded ? 'expanded' : ''}">${expandIcon}</span>
+          <span class="row-icon">${icon}</span>
+          <span class="row-name ${colorClass}">${node.keyName}</span>
+        </div>
+      </td>
+      <td class="center">${formatCount(node.invoices)}</td>
+      <td class="center val-normal">${formatNumber(node.grossQty || 0)}</td>
+      <td class="center val-red">${formatNumber(node.returnedQty || 0)}</td>
+      <td class="center val-blue">${formatNumber(node.netQty || 0)}</td>
+      <td class="left val-blue">${formatMoney(node.sales)}</td>
+      <td class="left val-red">${formatMoney(node.returnedQty ? (node.sales * (node.returnedQty / (node.grossQty || 1))) : 0)}</td>
+      <td class="left val-blue">${formatMoney(node.sales)}</td>
+      <td class="left val-green">${formatMoney(node.collected)}</td>
+      <td class="left val-warn">${formatMoney(node.outstanding)}</td>
+      <td class="center">
+        <div class="rate-wrap">
+          <div class="rate-bar"><div class="rate-fill ${node.rate >= 50 ? 'good' : 'bad'}" style="width:${Math.min(node.rate, 100)}%;"></div></div>
+          <span class="rate-pct ${node.rate >= 50 ? 'good' : 'bad'}">${node.rate}٪</span>
+        </div>
+      </td>
     </tr>
-  `).join('');
+  `;
+  
+  if (isExpanded && node.childrenGroup && !node.childrenGroup.isLeaf) {
+    node.childrenGroup.children.forEach(child => {
+      html += renderTreeGroup(child, depth + 1);
+    });
+  }
+  
+  return html;
 }
 
-function computeQuickPresetRange(mode) {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-  if (mode === 'يومي') {
-    const today = fmt(now);
-    return { start: today, end: today, year: String(now.getFullYear()) };
-  }
-  if (mode === 'أسبوعي') {
-    // Current week starting Saturday (standard for regional business week)
-    const dayOfWeek = now.getDay();
-    const diffToSat = (dayOfWeek + 1) % 7;
-    const start = new Date(now);
-    start.setDate(now.getDate() - diffToSat);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    return { start: fmt(start), end: fmt(end), year: String(start.getFullYear()) };
-  }
-  if (mode === 'شهري') {
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    const start = `${y}-${pad(m + 1)}-01`;
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    const end = `${y}-${pad(m + 1)}-${pad(lastDay)}`;
-    return { start, end, year: String(y) };
-  }
-  if (mode === 'ربع سنوي') {
-    const y = now.getFullYear();
-    const q = Math.floor(now.getMonth() / 3);
-    const startM = q * 3 + 1;
-    const endM = startM + 2;
-    const start = `${y}-${pad(startM)}-01`;
-    const lastDay = new Date(y, endM, 0).getDate();
-    const end = `${y}-${pad(endM)}-${pad(lastDay)}`;
-    return { start, end, year: String(y) };
-  }
-  if (mode === 'سنوي') {
-    const y = now.getFullYear();
-    return { start: `${y}-01-01`, end: `${y}-12-31`, year: String(y) };
+function renderDrilldownTable(drilldown) {
+  const tbody = document.getElementById('drillTableBody');
+  if (!tbody) return;
+  
+  // Use flat customers data for dynamic grouping instead of pre-grouped drilldown
+  const flatCustomers = liveDashboard.data?.growthAnalysis?.customers || [];
+  if (!flatCustomers.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="center">لا توجد بيانات تفصيلية</td></tr>';
+    return;
   }
 
-  return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-31`, year: String(now.getFullYear()) };
+  // Build the tree dynamically
+  const tree = groupFlatDataRecursively(flatCustomers, selectedGroupByOrder, 0);
+
+  let rowsHtml = '';
+  if (tree.children && tree.children.length > 0) {
+    tree.children.forEach(node => {
+      rowsHtml += renderTreeGroup(node, 0);
+    });
+  } else {
+    rowsHtml = '<tr><td colspan="11" class="center">لا توجد بيانات</td></tr>';
+  }
+
+  tbody.innerHTML = rowsHtml;
 }
-
-function clearCustomDateInputs() {
-  const sync = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  sync('dateFrom', '');
-  sync('dateTo', '');
-  sync('yearFilter', '');
-  sync('monthFilter', '');
-  sync('periodFilter', '');
-  sync('dayFilter', '');
-  liveDashboard.filters.year = '';
-  liveDashboard.filters.month = '';
-  liveDashboard.filters.period = '';
-  liveDashboard.filters.day = '';
-}
-
-function activateCustomTab() {
-  liveDashboard.filters.dateFilterType = 'custom';
-  liveDashboard.mode = 'مخصص';
-  liveDashboard.filters.quickPreset = '';
-  document.querySelectorAll('.date-tab').forEach(t => {
-    if (t.textContent.trim() === 'مخصص') t.classList.add('active');
-    else t.classList.remove('active');
-  });
-  const customDate = document.getElementById('customDate');
-  if (customDate) {
-    customDate.classList.add('active');
-    customDate.style.display = 'flex';
-  }
-}
-
-function onCustomDateRangeChange() {
-  activateCustomTab();
-  // Clear dropdowns when manual date range is entered to avoid conflict
-  const sync = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  sync('yearFilter', '');
-  sync('monthFilter', '');
-  sync('periodFilter', '');
-  sync('dayFilter', '');
-  liveDashboard.filters.year = '';
-  liveDashboard.filters.month = '';
-  liveDashboard.filters.period = '';
-  liveDashboard.filters.day = '';
-
-  const from = document.getElementById('dateFrom')?.value || '';
-  const to = document.getElementById('dateTo')?.value || '';
-  liveDashboard.filters.startDate = from;
-  liveDashboard.filters.endDate = to;
-  // NOTE: No auto-load. User must click "تطبيق الفلاتر" button.
-  markFiltersPending();
-}
-
-function onCustomDropdownChange() {
-  activateCustomTab();
-  // Clear date range inputs when dropdowns are selected to avoid conflict
-  const sync = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  sync('dateFrom', '');
-  sync('dateTo', '');
-  liveDashboard.filters.startDate = '';
-  liveDashboard.filters.endDate = '';
-
-  const getVal = (id) => document.getElementById(id)?.value || '';
-  const year = getVal('yearFilter');
-  const month = getVal('monthFilter');
-  liveDashboard.filters.year = year;
-  liveDashboard.filters.month = month;
-  liveDashboard.filters.period = getVal('periodFilter');
-
-  // Dynamically update day options strictly based on selected year/month
-  updateDayFilterOptions(year, month);
-  liveDashboard.filters.day = getVal('dayFilter');
-
-  // NOTE: No auto-load. User must click "تطبيق الفلاتر" button.
-  markFiltersPending();
-}
-
 function onDataSourceChange() {
   const sourceEl = document.getElementById('dataSourceFilter');
   const statusEl = document.getElementById('salesOrderStatusFilter');

@@ -1644,7 +1644,7 @@
           <span class="table-hint">— انقر على الصف لتوسيعه</span>
         </div>
         <div class="table-toolbar-right">
-          <div id="cascadingFiltersContainer" style="display:flex; flex-direction:column; gap:6px; min-width: 160px; margin-left: 8px;"></div>
+          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع"><option value="region">المنطقة</option><option value="city">المدينة</option><option value="rep">المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
           <button class="tbl-btn" onclick="toggleRepSort()">ترتيب المندوبين</button>
           <button class="tbl-btn" onclick="expandAll()">توسيع الكل</button>
           <button class="tbl-btn" onclick="collapseAll()">طي الكل</button>
@@ -2419,113 +2419,7 @@ function toggleRepSort() { dashboardState.repSort=dashboardState.repSort==='desc
 function setComparison(mode, button) { dashboardState.comparison=mode; document.querySelectorAll('#momTab,#yoyTab').forEach(tab=>tab.classList.remove('active-top')); if(button) button.classList.add('active-top'); renderDecisionReports(); }
 document.addEventListener('DOMContentLoaded', () => { document.getElementById('globalSearch').addEventListener('input',applyFilters); ['region','city','rep','customer','category','product','month','year','period','day'].forEach(key=>{const id=key==='category'?'catFilter':key+'Filter'; document.getElementById(id).addEventListener('change',applyFilters);}); document.getElementById('groupByFilter').addEventListener('change', event=>{dashboardState.groupBy=[...event.target.selectedOptions].map(option=>option.value); renderDashboard();}); document.querySelectorAll('#drillTableHead th[data-sort]').forEach(th=>th.addEventListener('click',()=>{const key=th.dataset.sort; dashboardState.sort.dir=dashboardState.sort.key===key&&dashboardState.sort.dir==='desc'?'asc':'desc'; dashboardState.sort.key=key; renderTable();})); renderDashboard(); });
 
-// Cascading Group Filters Logic
-const CASCADING_LEVELS = [
-  { value: 'region', label: 'المنطقة' },
-  { value: 'city', label: 'المدينة' },
-  { value: 'rep', label: 'المندوب' },
-  { value: 'customer', label: 'العميل' },
-  { value: 'category', label: 'الفئة' },
-  { value: 'product', label: 'المنتج' }
-];
-let selectedCascadingLevels = ['region'];
 
-function renderCascadingFilters() {
-  const container = document.getElementById('cascadingFiltersContainer');
-  if (!container) return;
-  container.innerHTML = '';
-  
-  selectedCascadingLevels.forEach((levelVal, index) => {
-    const select = document.createElement('select');
-    select.className = 'filter-select';
-    
-    // Add the selected option
-    const currentLevelObj = CASCADING_LEVELS.find(l => l.value === levelVal);
-    if(currentLevelObj) {
-      const opt = document.createElement('option');
-      opt.value = currentLevelObj.value;
-      opt.textContent = (index + 1) + '. ' + currentLevelObj.label;
-      opt.selected = true;
-      select.appendChild(opt);
-    }
-    
-    // Allow changing THIS level to any available option
-    CASCADING_LEVELS.forEach(lvl => {
-      if (!selectedCascadingLevels.includes(lvl.value) && lvl.value !== levelVal) {
-        const opt = document.createElement('option');
-        opt.value = lvl.value;
-        opt.textContent = lvl.label;
-        select.appendChild(opt);
-      }
-    });
-    
-    // Allow removing this level if it's not the first one
-    if (index > 0) {
-      const opt = document.createElement('option');
-      opt.value = 'remove';
-      opt.textContent = '❌ إزالة هذا المستوى';
-      select.appendChild(opt);
-    }
-
-    select.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (val === 'remove') {
-        selectedCascadingLevels = selectedCascadingLevels.slice(0, index);
-      } else {
-        selectedCascadingLevels[index] = val;
-        selectedCascadingLevels = selectedCascadingLevels.slice(0, index + 1); // truncate children
-      }
-      updateDashboardGrouping();
-      renderCascadingFilters();
-    });
-    
-    container.appendChild(select);
-  });
-  
-  // Add a "Next Level" dropdown if remaining
-  if (selectedCascadingLevels.length < CASCADING_LEVELS.length) {
-    const nextSelect = document.createElement('select');
-    nextSelect.className = 'filter-select';
-    nextSelect.style.borderStyle = 'dashed';
-    nextSelect.style.borderColor = 'var(--ks-kinpaku)'; // highlight
-    
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = '+ إضافة تفرع جديد...';
-    nextSelect.appendChild(defaultOpt);
-    
-    CASCADING_LEVELS.forEach(lvl => {
-      if (!selectedCascadingLevels.includes(lvl.value)) {
-        const opt = document.createElement('option');
-        opt.value = lvl.value;
-        opt.textContent = lvl.label;
-        nextSelect.appendChild(opt);
-      }
-    });
-    
-    nextSelect.addEventListener('change', (e) => {
-      if(e.target.value) {
-        selectedCascadingLevels.push(e.target.value);
-        updateDashboardGrouping();
-        renderCascadingFilters();
-      }
-    });
-    
-    container.appendChild(nextSelect);
-  }
-}
-
-function updateDashboardGrouping() {
-  if (typeof dashboardState !== 'undefined') {
-    dashboardState.groupBy = [...selectedCascadingLevels];
-    if (typeof renderDashboard === 'function') renderDashboard();
-  }
-  if (typeof brdState !== 'undefined') {
-    brdState.groupKeys = [...selectedCascadingLevels];
-    if (typeof brdTable === 'function') brdTable();
-  }
-}
-setTimeout(renderCascadingFilters, 100);
 
 
 </script>
