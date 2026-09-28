@@ -324,10 +324,59 @@
     .toggle-track.qty .toggle-thumb { right: calc(100% - 14px); }
     .toggle-track.qty { background: var(--ks-patina); }
 
+    .apply-filters-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, #d6aa5b, #c29543);
+      color: #0d121f;
+      border: 1px solid rgba(214, 170, 91, 0.4);
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .apply-filters-btn:hover {
+      background: linear-gradient(135deg, #e0b86c, #cb9f4e);
+      box-shadow: 0 4px 12px rgba(214, 170, 91, 0.35);
+      transform: translateY(-1px);
+    }
+    .apply-filters-btn:active {
+      transform: translateY(0);
+    }
+    .apply-filters-btn.has-pending {
+      animation: pulse-border 1.5s infinite;
+      border-color: #f59e0b;
+    }
+    .apply-filters-pending {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 9px;
+      height: 9px;
+      background: #ef4444;
+      border-radius: 50%;
+      border: 2px solid var(--ks-graphite-1, #131b2e);
+    }
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(214, 170, 91, 0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(214, 170, 91, 0.2); }
+    }
+
     .churn-badge {
       display: flex; align-items: center; gap: 6px;
       background: rgba(239, 68, 68, 0.1); border: 1px solid var(--ks-warning);
       border-radius: 6px; padding: 4px 10px; flex-shrink: 0;
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .churn-badge:hover {
+      background: rgba(239, 68, 68, 0.2);
+      transform: translateY(-1px);
     }
     .churn-dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -339,6 +388,159 @@
       50% { opacity: 0.5; transform: scale(0.85); }
     }
     .churn-badge-text { font-size: 12px; font-weight: 700; color: var(--ks-warning); }
+
+    /* ─── MODAL STYLES (CHURN WARNINGS) ─── */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(5, 8, 16, 0.82);
+      backdrop-filter: blur(6px);
+      z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 0; visibility: hidden;
+      transition: all 0.25s ease-in-out;
+    }
+    .modal-overlay.active {
+      opacity: 1; visibility: visible;
+    }
+    .modal-container {
+      background: var(--ks-raised);
+      border: 1px solid var(--ks-rule-strong);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 1020px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6);
+      animation: modalSlideIn 0.3s ease-out;
+      overflow: hidden;
+    }
+    @keyframes modalSlideIn {
+      from { transform: translateY(20px) scale(0.97); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--ks-rule);
+      background: var(--ks-graphite);
+    }
+    .modal-header-title {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 17px; font-weight: 700;
+      color: var(--ks-champagne);
+    }
+    .modal-close-btn {
+      background: transparent;
+      border: 1px solid var(--ks-rule);
+      color: var(--ks-text-muted);
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .modal-close-btn:hover {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: var(--ks-warning);
+      color: var(--ks-warning);
+    }
+    .modal-body {
+      padding: 20px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal-explainer {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--ks-text-warm);
+    }
+    .modal-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+    }
+    .modal-stat-card {
+      background: var(--ks-graphite);
+      border: 1px solid var(--ks-rule);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .modal-stat-card.risk-high {
+      border-color: rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.06);
+    }
+    .modal-stat-card.risk-med {
+      border-color: rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.06);
+    }
+    .modal-stat-val {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--ks-champagne);
+    }
+    .modal-stat-lbl {
+      font-size: 11px;
+      color: var(--ks-text-muted);
+    }
+    .modal-search-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .modal-table-wrap {
+      max-height: 340px;
+      overflow-y: auto;
+      border: 1px solid var(--ks-rule);
+      border-radius: 8px;
+    }
+    .modal-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .modal-table th {
+      position: sticky;
+      top: 0;
+      background: var(--ks-graphite);
+      padding: 10px 12px;
+      text-align: right;
+      font-weight: 700;
+      color: var(--ks-champagne);
+      border-bottom: 1px solid var(--ks-rule);
+      z-index: 2;
+    }
+    .modal-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--ks-rule);
+      color: var(--ks-text-warm);
+    }
+    .modal-table tr:hover td {
+      background: rgba(214, 170, 91, 0.05);
+    }
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-top: 1px solid var(--ks-rule);
+      background: var(--ks-graphite);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
 
     /* ─── MAIN LAYOUT ─── */
     .main {
@@ -377,6 +579,139 @@
       transform: translateY(-2px);
       box-shadow: var(--card-shadow-hover);
       border-color: var(--ks-rule-strong);
+    }
+    .kpi-card.is-clickable {
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+    }
+    .kpi-card.is-clickable:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+      border-color: rgba(214, 170, 91, 0.65);
+    }
+    .kpi-card.is-clickable:active {
+      transform: translateY(-1px);
+    }
+    .kpi-icon-wrap {
+      position: relative;
+      cursor: pointer;
+      display: inline-block;
+    }
+    .kpi-icon-drill-badge {
+      position: absolute;
+      bottom: -3px;
+      left: -3px;
+      width: 14px;
+      height: 14px;
+      background: var(--ks-kinpaku);
+      color: #0b0f19;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 800;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+      border: 1px solid var(--ks-obsidian);
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+    .kpi-card.is-clickable:hover .kpi-icon-drill-badge {
+      transform: scale(1.2);
+      background: #facc15;
+    }
+    .kpi-card.is-clickable:hover .kpi-icon {
+      transform: scale(1.08);
+      border-color: var(--ks-kinpaku);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .kpi-drill-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ks-kinpaku);
+      background: rgba(214, 170, 91, 0.1);
+      border: 1px solid rgba(214, 170, 91, 0.25);
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .kpi-card.is-clickable:hover .kpi-drill-btn {
+      background: var(--ks-kinpaku);
+      color: #0b0f19;
+      border-color: var(--ks-kinpaku);
+    }
+    .odoo-direct-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #60a5fa;
+      font-weight: 700;
+      font-family: 'Albert Sans', 'Cairo', monospace;
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .odoo-direct-link:hover {
+      color: #93c5fd;
+      text-decoration: underline;
+    }
+    .odoo-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 4px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #93c5fd;
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .odoo-action-btn:hover {
+      background: #3b82f6;
+      color: #fff;
+      border-color: #3b82f6;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+    }
+    .payment-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .payment-badge.paid {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--ks-success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .payment-badge.in_payment {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .payment-badge.partial {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--ks-kinpaku-rich);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .payment-badge.not_paid {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--ks-warning);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .payment-badge.reversed {
+      background: rgba(156, 163, 175, 0.15);
+      color: #9ca3af;
+      border: 1px solid rgba(156, 163, 175, 0.3);
     }
     .kpi-card.blue { border-top: 3px solid #3b82f6; }
     .kpi-card.green { border-top: 3px solid var(--ks-success); }
@@ -700,12 +1035,26 @@
     .source-control select { background:var(--ks-raised); color:var(--ks-champagne); border:1px solid var(--ks-rule); border-radius:4px; padding:3px 8px; font-family:'Cairo',sans-serif; font-size:12px; }
     .source-control select:focus { outline:none; border-color:var(--ks-kinpaku); }
     .source-note::before { content:'●'; font-size:9px; }
-    .custom-date { display:none; gap:10px; align-items:flex-end; flex-wrap:wrap; }
-    .custom-date-group { display:flex; flex-direction:column; gap:4px; }
-    .custom-date-label { font-size:11px; font-weight:700; color:var(--ks-kinpaku); }
-    .custom-date input { background:var(--ks-raised); color:var(--ks-champagne); border:1px solid var(--ks-rule); padding:6px 10px; border-radius:6px; font-family:'Cairo',sans-serif; font-size:12px; min-width:140px; }
-    .custom-date input:focus { outline:none; border-color:var(--ks-kinpaku); }
-    .custom-date-sep { font-size:16px; color:var(--ks-text-muted); padding-bottom:4px; }
+    .custom-date {
+      display: none;
+      gap: 8px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      background: rgba(245, 158, 11, 0.05);
+      border: 1px dashed rgba(245, 158, 11, 0.35);
+      padding: 6px 12px;
+      border-radius: 8px;
+      animation: fadeInCustom 0.2s ease;
+    }
+    .custom-date.active { display: flex; }
+    .custom-date-group { display: flex; flex-direction: column; gap: 3px; }
+    .custom-date-label { font-size: 11px; font-weight: 700; color: var(--ks-kinpaku); }
+    .custom-date input { background: var(--ks-raised); color: var(--ks-champagne); border: 1px solid var(--ks-rule); padding: 5px 8px; border-radius: 6px; font-family: 'Cairo', sans-serif; font-size: 12px; min-width: 125px; height: 32px; }
+    .custom-date input:focus { outline: none; border-color: var(--ks-kinpaku); }
+    .custom-date-sep { font-size: 16px; color: var(--ks-text-muted); padding-bottom: 6px; }
+    .custom-date-divider { width: 1px; height: 28px; background: var(--ks-rule); margin: 0 4px; align-self: center; }
+    .custom-select-sm { height: 32px; padding: 4px 24px 4px 8px; font-size: 12px; }
+    @keyframes fadeInCustom { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
     
     .returns-table-card { background:var(--ks-raised); border:1px solid var(--ks-rule); border-radius:8px; box-shadow:var(--card-shadow); overflow:hidden; }
     .returns-toolbar { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--ks-rule); flex-wrap:wrap; gap:10px; }
@@ -721,9 +1070,14 @@
     .returns-table th { padding:12px 14px; color:var(--ks-text-muted); font-family:'Cairo',sans-serif; font-size:12px; font-weight:700; text-align:right; white-space:nowrap; }
     .returns-table td { padding:10px 14px; font-size:13px; color:var(--ks-champagne); border-bottom:1px solid var(--ks-rule); white-space:nowrap; }
     .returns-table tbody tr:hover { background:var(--ks-graphite); }
+    .returns-table tbody tr.clickable-return-row {
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .returns-table tbody tr.clickable-return-row:hover {
+      background: rgba(214, 170, 91, 0.08) !important;
+    }
     .returns-table .ret-amt { color:var(--ks-warning); font-weight:700; }
-    .returns-table .ret-badge { font-family:'Cairo',sans-serif; font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; border:1px solid; }
-    .returns-table .ret-badge.yes { border-color:var(--ks-warning); color:var(--ks-warning); background:rgba(239,68,68,0.12); }
 
     /* ─── FLOATING BACK TO TOP BUTTON ─── */
     .back-to-top-btn {
@@ -907,70 +1261,99 @@
     <div class="custom-date" id="customDate">
       <div class="custom-date-group">
         <span class="custom-date-label">من تاريخ</span>
-        <input type="date" id="dateFrom" aria-label="من تاريخ" />
+        <input type="date" id="dateFrom" aria-label="من تاريخ" onchange="onCustomDateRangeChange()" />
       </div>
       <span class="custom-date-sep">←</span>
       <div class="custom-date-group">
         <span class="custom-date-label">إلى تاريخ</span>
-        <input type="date" id="dateTo" aria-label="إلى تاريخ" />
+        <input type="date" id="dateTo" aria-label="إلى تاريخ" onchange="onCustomDateRangeChange()" />
+      </div>
+      <div class="custom-date-divider"></div>
+      <div class="custom-date-group">
+        <span class="custom-date-label">السنة</span>
+        <select class="filter-select custom-select-sm" id="yearFilter" onchange="onCustomDropdownChange()">
+          <option value="">كل السنوات</option>
+        </select>
+      </div>
+      <div class="custom-date-group">
+        <span class="custom-date-label">الشهر</span>
+        <select class="filter-select custom-select-sm" id="monthFilter" onchange="onCustomDropdownChange()">
+          <option value="">كل الأشهر</option>
+        </select>
+      </div>
+      <div class="custom-date-group">
+        <span class="custom-date-label">الفترة</span>
+        <select class="filter-select custom-select-sm" id="periodFilter" onchange="onCustomDropdownChange()">
+          <option value="">كل الفترات</option>
+        </select>
+      </div>
+      <div class="custom-date-group">
+        <span class="custom-date-label">اليوم</span>
+        <select class="filter-select custom-select-sm" id="dayFilter" onchange="onCustomDropdownChange()">
+          <option value="">كل الأيام</option>
+        </select>
       </div>
     </div>
 
     <div class="divider"></div>
     <span style="font-size:13px;color:var(--text3);">⚙️</span>
 
-    <select class="filter-select" id="comparisonFilter" aria-label="المقارنة الزمنية" onchange="applyFilters()">
+    <select class="filter-select" id="comparisonFilter" aria-label="المقارنة الزمنية" onchange="markFiltersPending()">
       <option value="none">بدون مقارنة (None)</option>
-      <option value="previousPeriod">المقارنة: الفترة السابقة (Previous Period)</option>
+      <option value="previousPeriod" selected>المقارنة: الفترة السابقة (Previous Period)</option>
       <option value="samePeriodLastYear">المقارنة: نفس الفترة من العام الماضي (Same Period Last Year)</option>
     </select>
 
     <!-- Filters -->
-    <select class="filter-select" id="regionFilter" onchange="applyFilters()">
+    <select class="filter-select" id="regionFilter" onchange="markFiltersPending()">
       <option value="">جميع المناطق</option>
     </select>
 
-    <select class="filter-select" id="cityFilter" onchange="applyFilters()"><option value="">جميع المدن</option></select>
+    <select class="filter-select" id="cityFilter" onchange="markFiltersPending()"><option value="">جميع المدن</option></select>
 
-    <select class="filter-select" id="repFilter" onchange="applyFilters()">
+    <select class="filter-select" id="repFilter" onchange="markFiltersPending()">
       <option value="">جميع المندوبين</option>
     </select>
 
-    <select class="filter-select" id="customerFilter" onchange="applyFilters()"><option value="">جميع العملاء</option></select>
-    <select class="filter-select" id="monthFilter" onchange="applyFilters()"><option value="">كل الأشهر</option></select>
-    <select class="filter-select" id="yearFilter" onchange="applyFilters()"><option value="">كل السنوات</option></select>
-    <select class="filter-select" id="periodFilter" onchange="applyFilters()"><option value="">كل الفترات</option></select>
-    <select class="filter-select" id="dayFilter" onchange="applyFilters()"><option value="">كل الأيام</option></select>
+    <select class="filter-select" id="customerFilter" onchange="markFiltersPending()"><option value="">جميع العملاء</option></select>
 
-    <select class="filter-select" id="catFilter" onchange="applyFilters()"><option value="">جميع الفئات</option></select>
-    <select class="filter-select" id="productFilter" onchange="applyFilters()"><option value="">جميع المنتجات</option></select>
+    <select class="filter-select" id="catFilter" onchange="markFiltersPending()"><option value="">جميع الفئات</option></select>
+    <select class="filter-select" id="productFilter" onchange="markFiltersPending()"><option value="">جميع المنتجات</option></select>
 
     <div class="spacer"></div>
 
     <!-- Toggle -->
-    <div class="toggle-wrap">
-      <span class="toggle-label active-val" id="toggleLabelVal">القيمة النقدية</span>
-      <button class="toggle-track" id="viewToggle" onclick="toggleView()">
+    <div class="toggle-wrap" title="التبديل بين عرض لوحة التحكم بالكامل بالقيمة النقدية أو بالكميات">
+      <span class="toggle-label active-val" id="toggleLabelVal" onclick="toggleView('amount')" style="cursor:pointer;" title="عرض كافة مؤشرات ورسوم لوحة التحكم بالقيمة النقدية (ج.م)">القيمة النقدية</span>
+      <button class="toggle-track" id="viewToggle" onclick="toggleView()" aria-label="التبديل بين القيمة والكمية" title="تبديل عرض لوحة التحكم بالكامل بين القيمة النقدية والكميات">
         <div class="toggle-thumb"></div>
       </button>
-      <span class="toggle-label inactive-val" id="toggleLabelQty">الكميات</span>
+      <span class="toggle-label inactive-val" id="toggleLabelQty" onclick="toggleView('quantity')" style="cursor:pointer;" title="عرض كافة مؤشرات ورسوم لوحة التحكم بالكميات (قطع)">الكميات</span>
     </div>
 
     <!-- Data source -->
     <div class="source-control" aria-label="مصدر البيانات">
       <span>المصدر</span>
-      <select id="dataSourceFilter" onchange="applyFilters()" aria-label="مصدر البيانات">
+      <select id="dataSourceFilter" onchange="onDataSourceChange()" aria-label="مصدر البيانات">
         <option value="postedInvoice">Posted Invoice (الفاتورة المعتمدة)</option>
         <option value="salesOrder">Sales Order (أمر المبيعات)</option>
       </select>
-      <select id="salesOrderStatusFilter" onchange="applyFilters()" aria-label="حالة أمر المبيعات" hidden>
+      <select id="salesOrderStatusFilter" onchange="markFiltersPending()" aria-label="حالة أمر المبيعات" hidden>
         <option value="post">Post</option>
         <option value="draft">Draft</option>
         <option value="all">All (Post and Draft)</option>
       </select>
     </div>
+
+    <!-- Apply Filters Button -->
+    <button class="apply-filters-btn" id="applyFiltersBtn" onclick="applyFilters()" title="تطبيق كافة الفلاتر المختارة">
+      <span class="apply-filters-icon">&#x1F50D;</span>
+      <span class="apply-filters-label">تطبيق الفلاتر</span>
+      <span class="apply-filters-pending" id="filtersPendingDot" hidden></span>
+    </button>
+
     <!-- Churn Badge -->
-    <div class="churn-badge">
+    <div class="churn-badge" onclick="openChurnModal()" style="cursor:pointer;" title="انقر لعرض وشرح تفاصيل تحذيرات المتابعة">
       <div class="churn-dot"></div>
       <span class="churn-badge-text">0 تحذيرات إلغاء</span>
     </div>
@@ -1090,7 +1473,11 @@
             <div class="chart-bar" style="background:linear-gradient(to bottom,#3b82f6,#06b6d4);"></div>
             <div class="chart-title" id="prodChartTitle">أفضل المنتجات مبيعاً</div>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div class="tab-group" id="prodMetricTabs">
+              <button class="tab-btn active-top" id="prodMetricValBtn" onclick="setProductMetric('amount',this)" title="ترتيب المنتجات حسب القيمة النقدية (ج.م)">نقدي</button>
+              <button class="tab-btn" id="prodMetricQtyBtn" onclick="setProductMetric('quantity',this)" title="ترتيب المنتجات حسب الكميات المباعة">كمي</button>
+            </div>
             <div class="tab-group">
               <button class="tab-btn active-top" id="tabTop" onclick="switchProductChart('top',this)">↑ الأعلى</button>
               <button class="tab-btn" id="tabBot" onclick="switchProductChart('bottom',this)">↓ الأدنى</button>
@@ -1113,13 +1500,15 @@
             <div class="chart-title">محرك النمو مقابل تحذيرات الإلغاء الخاص بالعملاء</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
-            <div class="churn-badge" style="margin-right:0;">
+            <div class="churn-badge" onclick="openChurnModal()" style="margin-right:0;cursor:pointer;" title="انقر لعرض وشرح تفاصيل تحذيرات المتابعة">
               <div class="churn-dot"></div>
               <span class="churn-badge-text">0 تحذيرات</span>
             </div>
-            <select id="growthGroupingFilter" class="filter-select" aria-label="تجميع النمو">
-              <option value="month">حسب الشهور</option>
-              <option value="year">حسب السنوات</option>
+            <select id="growthGroupingFilter" class="filter-select" aria-label="تحليل وتجميع العملاء">
+              <option value="churn" selected>تحذيرات تراجع العملاء (Churn)</option>
+              <option value="decline">أكبر العملاء انخفاضاً</option>
+              <option value="growth">أعلى العملاء نمواً</option>
+              <option value="month">التطور الزمني (شهري)</option>
             </select>
             <button class="tbl-export-btn" onclick="exportGrowthChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
@@ -1128,7 +1517,10 @@
           <canvas id="growthChart"></canvas>
         </div>
         <div style="margin-top:4px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px;">عملاء في خطر الإلغاء</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);">عملاء في خطر الإلغاء والتراجع</div>
+            <button onclick="openChurnModal()" class="tbl-export-btn" style="font-size:10px;padding:2px 8px;border-color:var(--ks-warning);color:var(--ks-warning);" title="عرض التقرير التفصيلي الكامل لمعايير التحذيرات">عرض الكل (شرح تفصيلي) 🔍</button>
+          </div>
           <div class="churn-list">
             <select id="churnCustomerFilter" class="filter-select" aria-label="عملاء في خطر الإلغاء"></select>
             <div id="churnDetail" class="churn-item low">اختر عميلًا لعرض تفاصيل التراجع</div>
@@ -1213,12 +1605,14 @@
       <div class="returns-table-wrap">
         <table class="returns-table" id="returnsAnalyticsTable">
           <thead><tr>
-            <th>اسم الأصناف والمنتجات</th>
+            <th>اسم الصنف والمنتج</th>
             <th>التصنيف</th>
+            <th>العميل</th>
             <th>اسم المندوب</th>
             <th>اسم المنطقة</th>
             <th>الكمية المرتجعة</th>
             <th>إجمالي المرتجع</th>
+            <th>مستند Odoo</th>
           </tr></thead>
           <tbody id="returnsTableBody"></tbody>
         </table>
@@ -1306,6 +1700,197 @@
 <button id="backToTopBtn" class="back-to-top-btn" title="الرجوع للأعلى" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" aria-label="الرجوع للأعلى">
   ↑
 </button>
+
+<!-- Churn Warnings Detail Modal -->
+<div class="modal-overlay" id="churnModalOverlay" onclick="if(event.target===this) closeChurnModal()">
+  <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="churnModalTitle">
+    <div class="modal-header">
+      <div class="modal-header-title">
+        <span style="font-size:20px;">⚠️</span>
+        <span id="churnModalTitle">تحذيرات متابعة العملاء (مخاطر تراجع المبيعات / Churn)</span>
+      </div>
+      <button class="modal-close-btn" onclick="closeChurnModal()" title="إغلاق">✕</button>
+    </div>
+    
+    <div class="modal-body">
+      <!-- Explainer Banner -->
+      <div class="modal-explainer">
+        <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;color:var(--ks-champagne);">
+          <span>ℹ️</span>
+          <span>دليل وتوضيح معايير تحذيرات المتابعة للمستخدم:</span>
+        </div>
+        <p style="margin:0 0 6px 0;">
+          ترصد هذه القائمة العملاء الذين حققوا مبيعات سابقة <strong>لا تقل عن 25,000 ج.م</strong> خلال فترة المقارنة، وسجلت مبيعاتهم الحالية <strong>تراجعاً حاداً بنسبة 30% أو أكثر</strong>، لمساعدة إدارة المبيعات على التحرك الاستباقي وتفادي خسارة العميل.
+        </p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:6px;">
+          <span>🔴 <strong>خطر مرتفع (High Risk):</strong> تراجع بنسبة <strong>50% فأكثر</strong> (أو توقف تام عن الشراء).</span>
+          <span>🟡 <strong>خطر متوسط (Medium Risk):</strong> تراجع بنسبة تتراوح بين <strong>30% و 49%</strong>.</span>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="modal-stats">
+        <div class="modal-stat-card">
+          <div class="modal-stat-val" id="churnModalTotalCount">0</div>
+          <div class="modal-stat-lbl">إجمالي العملاء في دائرة الخطر</div>
+        </div>
+        <div class="modal-stat-card risk-high">
+          <div class="modal-stat-val" id="churnModalHighCount" style="color:var(--ks-warning);">0</div>
+          <div class="modal-stat-lbl">عملاء عالي الخطورة (تراجع ≥ 50%)</div>
+        </div>
+        <div class="modal-stat-card risk-med">
+          <div class="modal-stat-val" id="churnModalMedCount" style="color:var(--ks-kinpaku-rich);">0</div>
+          <div class="modal-stat-lbl">عملاء متوسط الخطورة (تراجع 30-49%)</div>
+        </div>
+        <div class="modal-stat-card">
+          <div class="modal-stat-val" id="churnModalTotalLoss">0 ج.م</div>
+          <div class="modal-stat-lbl">إجمالي قيمة التراجع في المبيعات</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="modal-search-row">
+        <input type="text" id="churnModalSearch" placeholder="بحث باسم العميل، المنطقة، أو المندوب..." class="filter-select" style="flex:1;min-width:200px;" oninput="filterChurnModalTable()" />
+        <select id="churnModalRiskFilter" class="filter-select" onchange="filterChurnModalTable()">
+          <option value="all">جميع مستويات الخطورة</option>
+          <option value="مرتفع">خطر مرتفع فقط (🔴)</option>
+          <option value="متوسط">خطر متوسط فقط (🟡)</option>
+        </select>
+        <button class="tbl-export-btn" onclick="exportChurnWarningsToExcel()" style="padding:6px 12px;font-size:12px;" title="تصدير هذه القائمة إلى Excel">📥 تصدير Excel</button>
+      </div>
+
+      <!-- Detail Table -->
+      <div class="modal-table-wrap">
+        <table class="modal-table" id="churnModalTable">
+          <thead>
+            <tr>
+              <th>العميل</th>
+              <th>المحافظة / المنطقة</th>
+              <th>المندوب</th>
+              <th>الفترة السابقة</th>
+              <th>الفترة الحالية</th>
+              <th>قيمة التراجع</th>
+              <th>نسبة التراجع</th>
+              <th>مستوى الخطورة</th>
+              <th>إجراء</th>
+            </tr>
+          </thead>
+          <tbody id="churnModalTableBody">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div style="font-size:12px;color:var(--ks-text-muted);">
+        <span>💡 نصيحة: يمكنك النقر على "تصفية" بجانب أي عميل لعرض مبيعاته وفواتيره بالتفصيل في لوحة التحكم.</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="export-btn" onclick="closeChurnModal()" style="cursor:pointer;">إغلاق</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Drilldown Records Modal (Direct Odoo Hyperlinks) -->
+<div class="modal-overlay" id="kpiDrilldownModalOverlay" onclick="if(event.target===this) closeKpiDrilldownModal()">
+  <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="kpiDrilldownModalTitle" style="max-width:1200px;">
+    <div class="modal-header">
+      <div class="modal-header-title">
+        <span style="font-size:20px;" id="kpiDrilldownIcon">📑</span>
+        <span id="kpiDrilldownModalTitle">تفاصيل القيود والمستندات (Drill-down)</span>
+      </div>
+      <button class="modal-close-btn" onclick="closeKpiDrilldownModal()" title="إغلاق">✕</button>
+    </div>
+    
+    <div class="modal-body">
+      <!-- Drilldown Context Banner -->
+      <div class="modal-explainer" style="background:rgba(214,170,91,0.08);border-color:rgba(214,170,91,0.3);">
+        <div style="font-weight:700;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;color:var(--ks-champagne);flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span>ℹ️</span>
+            <span id="kpiDrilldownHeaderTitle">سجلات المؤشر المحددة</span>
+          </div>
+          <div style="font-size:12px;color:var(--ks-kinpaku-rich);font-weight:600;" id="kpiDrilldownFilterSummary">
+            الفترة والمحددات النشطة
+          </div>
+        </div>
+        <p style="margin:0;font-size:12px;color:var(--ks-text-muted);">
+          يعرض هذا الجدول القيود والفواتير وأوامر البيع المطابقة لنفس الفترة والمحددات المطبقة بلوحة التحكم. انقر على رقم المستند أو زر <strong>فتح في Odoo ↗</strong> للانتقال مباشرة لشاشة المستند في نظام أودو.
+        </p>
+      </div>
+
+      <!-- Stats Summary Row -->
+      <div class="modal-stats" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="modal-stat-card">
+          <div class="modal-stat-val" id="kpiDrilldownTotalCount">0</div>
+          <div class="modal-stat-lbl">إجمالي عدد المستندات</div>
+        </div>
+        <div class="modal-stat-card">
+          <div class="modal-stat-val" id="kpiDrilldownTotalAmount" style="color:var(--ks-champagne);">0 ج.م</div>
+          <div class="modal-stat-lbl">إجمالي القيمة</div>
+        </div>
+        <div class="modal-stat-card">
+          <div class="modal-stat-val" id="kpiDrilldownTotalPaid" style="color:var(--ks-success);">0 ج.م</div>
+          <div class="modal-stat-lbl">المبالغ المسددة / المحصلة</div>
+        </div>
+        <div class="modal-stat-card">
+          <div class="modal-stat-val" id="kpiDrilldownTotalResidual" style="color:var(--ks-warning);">0 ج.م</div>
+          <div class="modal-stat-lbl">الأرصدة المتبقية (مديونية)</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls & Search -->
+      <div class="modal-search-row">
+        <input type="text" id="kpiDrilldownSearch" placeholder="بحث برقم الفاتورة، اسم العميل، المندوب، أو المدينة..." class="filter-select" style="flex:1;min-width:220px;" oninput="filterKpiDrilldownTable()" />
+        <select id="kpiDrilldownStatusFilter" class="filter-select" onchange="filterKpiDrilldownTable()">
+          <option value="all">جميع حالات السداد</option>
+          <option value="paid">مدفوع بالكامل</option>
+          <option value="in_payment">قيد السداد</option>
+          <option value="partial">سداد جزئي</option>
+          <option value="not_paid">غير مدفوع</option>
+          <option value="refund">إشعارات الخصم (مرتجعات)</option>
+        </select>
+        <button class="tbl-export-btn" onclick="exportKpiDrilldownToExcel()" style="padding:6px 14px;font-size:12px;" title="تصدير هذه القائمة إلى Excel">📥 تصدير Excel</button>
+      </div>
+
+      <!-- Detail Table -->
+      <div class="modal-table-wrap">
+        <table class="modal-table" id="kpiDrilldownTable">
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>رقم المستند / القيد</th>
+              <th>النوع</th>
+              <th>العميل</th>
+              <th>المندوب</th>
+              <th>المنطقة / المدينة</th>
+              <th>تاريخ المستند</th>
+              <th>إجمالي القيمة</th>
+              <th>المسدد</th>
+              <th>المتبقي</th>
+              <th>حالة السداد</th>
+              <th>رابط Odoo</th>
+            </tr>
+          </thead>
+          <tbody id="kpiDrilldownTableBody">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div style="font-size:12px;color:var(--ks-text-muted);">
+        <span id="kpiDrilldownFooterSummary">عرض السجلات المعتمدة المطابقة للفلتر النشط.</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="export-btn" onclick="closeKpiDrilldownModal()" style="cursor:pointer;">إغلاق</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════ SCRIPTS ═══════════════════════════ -->
 <script type="text/legacy">
@@ -2066,15 +2651,21 @@ function renderReturnsAnalyticsTable() {
   const brdMoneyFn = v => `${Math.round(v||0).toLocaleString('ar-EG')} ج.م`;
   const brdNumFn   = v => Math.round(v||0).toLocaleString('ar-EG');
   tbody.innerHTML = returnsRows.slice(0, 20).map((row, i) => {
-    const onSystem = row.returnOnSystem !== undefined ? row.returnOnSystem : (row.returnOrders > 0);
     const creditNote = row.creditNote || (row.returnOrders > 0 ? `CN-${String(i+1).padStart(4,'0')}` : '—');
-    return `<tr>
-      <td>${row.product || '—'}</td>
+    return `<tr class="clickable-return-row">
+      <td>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <span style="font-weight:700;">${row.product || '—'}</span>
+          <span style="font-size:11px;color:var(--ks-text-muted);font-family:monospace;">${creditNote}</span>
+        </div>
+      </td>
       <td>${row.category || '—'}</td>
+      <td><strong>${row.customer || '—'}</strong></td>
       <td>${row.rep || row.salesRep || '—'}</td>
       <td>${row.region || '—'}</td>
       <td>${brdNumFn(row.returnedQty||0)}</td>
       <td class="ret-amt">${brdMoneyFn(row.returns||0)}</td>
+      <td><span class="odoo-action-btn">فتح في Odoo ↗</span></td>
     </tr>`;
   }).join('');
 }
