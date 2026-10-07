@@ -77,25 +77,88 @@ function verifySessionToken(tokenString) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// High-Performance Multi-Tier In-Memory Cache with LRU & Metrics
+// ─────────────────────────────────────────────────────────────
 const cache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache for ultra-fast dashboard loads
+const CACHE_DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 minutes default
+const MAX_CACHE_ENTRIES = 500;
+const CACHE_STATS = { hits: 0, misses: 0, sets: 0, evictions: 0 };
+
+function normalizeCacheKey(prefix, uid, query = {}) {
+  const ignoredKeys = new Set(['refresh', '_', 't']);
+  const cleanEntries = Object.entries(query)
+    .filter(([k, v]) => !ignoredKeys.has(k) && v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k, v]) => [k, String(v).trim()])
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  const serialized = cleanEntries.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  return `${prefix}:${uid || 'pub'}:${serialized}`;
+}
+
+function getAdaptiveOverviewTTL(query = {}) {
+  const currentYear = new Date().getFullYear();
+  let queryYear = null;
+  if (query.startDate) {
+    const y = parseInt(String(query.startDate).slice(0, 4), 10);
+    if (!isNaN(y)) queryYear = y;
+  } else if (query.year) {
+    const y = parseInt(String(query.year), 10);
+    if (!isNaN(y)) queryYear = y;
+  }
+
+  // Closed historical years (e.g. 2020..2025) are immutable -> 12 hours cache!
+  if (queryYear && queryYear < currentYear) {
+    return 12 * 60 * 60 * 1000;
+  }
+  // Active/current period data -> 10 minutes cache
+  return 10 * 60 * 1000;
+}
 
 function getCached(key) {
   const item = cache.get(key);
-  if (!item) return null;
-  if (Date.now() > item.expiresAt) {
-    cache.delete(key);
+  if (!item) {
+    CACHE_STATS.misses++;
     return null;
   }
+  if (Date.now() > item.expiresAt) {
+    cache.delete(key);
+    CACHE_STATS.misses++;
+    return null;
+  }
+  CACHE_STATS.hits++;
   return item.data;
 }
 
-function setCached(key, data, ttlMs = CACHE_TTL_MS) {
-  cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+function setCached(key, data, ttlMs = CACHE_DEFAULT_TTL_MS) {
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    cache.delete(oldestKey);
+    CACHE_STATS.evictions++;
+  }
+  cache.set(key, { data, expiresAt: Date.now() + ttlMs, createdAt: Date.now() });
+  CACHE_STATS.sets++;
 }
 
 function clearCache() {
   cache.clear();
+  CACHE_STATS.hits = 0;
+  CACHE_STATS.misses = 0;
+  CACHE_STATS.sets = 0;
+  CACHE_STATS.evictions = 0;
+}
+
+function getCacheStats() {
+  const total = CACHE_STATS.hits + CACHE_STATS.misses;
+  const hitRatio = total > 0 ? Number(((CACHE_STATS.hits / total) * 100).toFixed(1)) : 0;
+  return {
+    size: cache.size,
+    maxSize: MAX_CACHE_ENTRIES,
+    hits: CACHE_STATS.hits,
+    misses: CACHE_STATS.misses,
+    sets: CACHE_STATS.sets,
+    hitRatio: `${hitRatio}%`
+  };
 }
 
 function parseCookies(header = '') {
@@ -131,33 +194,169 @@ function getSession(req) {
   return null;
 }
 
-// Low-level XML-RPC Client helper
+// Low-level XML-RPC Client helper with 50s Timeout and HTML/Exception Safeguards
+const ODOO_CALL_TIMEOUT_MS = 50000;
+
 function odooCall(service, method, args) {
   return new Promise((resolve, reject) => {
-    const client = createOdooClient({
-      host: host,
-      port: odooPort,
-      path: `/xmlrpc/2/${service}`
-    });
+    let timer = null;
+    let finished = false;
 
-    client.methodCall(method, args, (error, value) => {
-      if (error) return reject(error);
-      resolve(value);
-    });
+    const safeReject = (err) => {
+      if (finished) return;
+      finished = true;
+      if (timer) clearTimeout(timer);
+      reject(err);
+    };
+
+    const safeResolve = (val) => {
+      if (finished) return;
+      finished = true;
+      if (timer) clearTimeout(timer);
+      resolve(val);
+    };
+
+    timer = setTimeout(() => {
+      safeReject(new Error('انتهت مهلة استجابة خادم Odoo (504 Gateway Timeout) - استغرق الطلب أكثر من 50 ثانية'));
+    }, ODOO_CALL_TIMEOUT_MS);
+
+    try {
+      const client = createOdooClient({
+        host: host,
+        port: odooPort,
+        path: `/xmlrpc/2/${service}`
+      });
+
+      client.methodCall(method, args, (error, value) => {
+        if (error) {
+          const msg = String(error.message || error.faultString || '');
+          const lower = msg.toLowerCase();
+          if (
+            lower.includes('unknown xml-rpc tag') ||
+            lower.includes('title') ||
+            lower.includes('doctype') ||
+            lower.includes('html') ||
+            lower.includes('head') ||
+            lower.includes('body') ||
+            lower.includes('504') ||
+            lower.includes('gateway timeout')
+          ) {
+            return safeReject(new Error('انتهت مهلة استجابة خادم Odoo (504 Gateway Timeout) - يرجى تقليل نطاق الفلترة أو إعادة المحاولة'));
+          }
+          if (
+            lower.includes('econnrefused') ||
+            lower.includes('enotfound') ||
+            lower.includes('socket hang up') ||
+            lower.includes('econnreset') ||
+            lower.includes('502') ||
+            lower.includes('bad gateway') ||
+            lower.includes('503') ||
+            lower.includes('service unavailable')
+          ) {
+            return safeReject(new Error('تعذر الاتصال بخادم Odoo حالياً. يرجى التحقق من اتصال الشبكة وإعادة المحاولة.'));
+          }
+          return safeReject(error);
+        }
+        safeResolve(value);
+      });
+    } catch (syncErr) {
+      safeReject(syncErr);
+    }
   });
 }
 
-// Execute Kw wrapper
+// Central Error Sanitizer: Translates technical exceptions to friendly Arabic messages
+function sanitizeErrorMessage(err) {
+  if (!err) return 'تعذر إتمام العملية في الوقت الحالي';
+  const msg = String(err.message || err.faultString || err || '').trim();
+  const lower = msg.toLowerCase();
+
+  // Gateway / Timeout / HTML Response / XML-RPC tag error
+  if (
+    lower.includes('unknown xml-rpc tag') ||
+    lower.includes('title') ||
+    lower.includes('doctype') ||
+    lower.includes('html') ||
+    lower.includes('head') ||
+    lower.includes('body') ||
+    lower.includes('504') ||
+    lower.includes('gateway timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('etimedout')
+  ) {
+    return 'استغرق خادم Odoo وقتاً أطول من المتوقع للاستجابة (مهلة اتصال). يرجى تقليل نطاق الفترة أو إعادة المحاولة.';
+  }
+
+  // Network / Connection drops
+  if (
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('socket hang up') ||
+    lower.includes('econnreset') ||
+    lower.includes('502') ||
+    lower.includes('bad gateway') ||
+    lower.includes('503') ||
+    lower.includes('service unavailable')
+  ) {
+    return 'تعذر الاتصال بخادم Odoo حالياً. يرجى التحقق من اتصال الشبكة بالخادم والمحاولة بعد قليل.';
+  }
+
+  // Auth / Access Denied
+  if (
+    lower.includes('access denied') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('uid') ||
+    lower.includes('session expired') ||
+    lower.includes('unauthorized')
+  ) {
+    return 'انتهت صلاحية جلسة الاتصال بنظام Odoo. يرجى إعادة تسجيل الدخول.';
+  }
+
+  // If it contains Python tracebacks or internal codes, do not expose raw code
+  if (
+    lower.includes('traceback') ||
+    lower.includes('exception') ||
+    lower.includes('syntaxerror') ||
+    lower.includes('keyerror') ||
+    lower.includes('typeerror') ||
+    lower.includes('zerodivision') ||
+    lower.includes('xmlrpc') ||
+    lower.includes('xml-rpc')
+  ) {
+    return 'حدث خطأ مؤقت في استجابة خادم Odoo. يرجى إعادة المحاولة.';
+  }
+
+  // If already clean Arabic text without technical leakage, return it
+  if (/[\u0600-\u06FF]/.test(msg) && !lower.includes('xml-rpc') && !lower.includes('title')) {
+    return msg;
+  }
+
+  return 'حدث خطأ أثناء معالجة بيانات Odoo. يرجى إعادة المحاولة.';
+}
+
+// Execute Kw wrapper with automatic retry on transient errors
 async function odooExecuteKw(uid, password, model, method, args = [], kwargs = {}) {
-  return odooCall('object', 'execute_kw', [
-    ODOO_DB,
-    uid,
-    password,
-    model,
-    method,
-    args,
-    kwargs
-  ]);
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await odooCall('object', 'execute_kw', [
+        ODOO_DB,
+        uid,
+        password,
+        model,
+        method,
+        args,
+        kwargs
+      ]);
+    } catch (err) {
+      lastErr = err;
+      const isAuthErr = /access denied|invalid credentials/i.test(String(err.message || ''));
+      if (isAuthErr || attempt === 2) throw err;
+      console.warn(`[Odoo] ${model}.${method} attempt ${attempt} failed, retrying...`, err.message);
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  throw lastErr;
 }
 
 // Helper to get active credentials (session or system default)
@@ -225,11 +424,12 @@ app.get('/api/odoo-health', async (req, res) => {
       status: 'ok',
       host,
       database: ODOO_DB,
-      serverVersion: version?.server_version || '19.0+e'
+      serverVersion: version?.server_version || '19.0+e',
+      cache: getCacheStats()
     });
   } catch (error) {
     console.error('Odoo health check failed:', error.message);
-    res.status(502).json({ status: 'error', error: 'تعذر الاتصال بـ Odoo XML-RPC' });
+    res.status(502).json({ status: 'error', error: 'تعذر الاتصال بـ Odoo XML-RPC', cache: getCacheStats() });
   }
 });
 
@@ -264,12 +464,81 @@ app.post('/api/logout', (req, res) => {
   res.json({ status: 'success' });
 });
 
+// Audit: raw Odoo totals for cross-checking dashboard numbers (read-only)
+app.get('/api/dashboard/audit', async (req, res) => {
+  try {
+    const auth = await getAuthCredentials(req);
+    if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
+    const start = String(req.query.start || '').trim();
+    const end = String(req.query.end || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return res.status(400).json({ error: 'use ?start=YYYY-MM-DD&end=YYYY-MM-DD[&status=post|draft|all]' });
+    }
+    const status = String(req.query.status || 'post').toLowerCase();
+    const stateClause = status === 'post' ? ['state', 'in', ['sale', 'done']]
+      : status === 'draft' ? ['state', 'in', ['draft', 'sent']] : ['state', '!=', 'cancel'];
+
+    // Cairo offset (hours) for the start date, e.g. +3 in summer
+    const offsetHours = (() => {
+      try {
+        const d = new Date(`${start}T12:00:00Z`);
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).formatToParts(d);
+        return Number(parts.find(p => p.type === 'hour').value) - 12;
+      } catch (e) { return 2; }
+    })();
+    const shift = (dateStr, endOfDay) => {
+      const base = new Date(`${dateStr}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
+      base.setUTCHours(base.getUTCHours() - offsetHours);
+      return base.toISOString().replace('T', ' ').slice(0, 19);
+    };
+
+    const ranges = {
+      utc: [`${start} 00:00:00`, `${end} 23:59:59`],
+      cairo: [shift(start, false), shift(end, true)]
+    };
+    const out = { offsetHours, ranges, status };
+
+    for (const [key, [from, to]] of Object.entries(ranges)) {
+      const domain = [['date_order', '>=', from], ['date_order', '<=', to], stateClause];
+      const [total, byRep] = await Promise.all([
+        odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [domain, ['amount_total:sum', 'amount_untaxed:sum'], []]),
+        odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [domain, ['amount_total:sum'], ['user_id'], 0, 1000, false, false])
+      ]);
+      out[key] = {
+        count: total?.[0]?.__count || 0,
+        amount_total: total?.[0]?.amount_total || 0,
+        amount_untaxed: total?.[0]?.amount_untaxed || 0,
+        byRep: (byRep || []).map(g => ({
+          rep: g.user_id ? g.user_id[1] : 'غير محدد',
+          count: g.__count ?? g.user_id_count,
+          amount_total: g.amount_total
+        })).sort((a, b) => b.amount_total - a.amount_total)
+      };
+    }
+
+    // Discover custom region / city fields on sale.order (labels containing منطقة / مدينة)
+    const fields = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'fields_get', [], { attributes: ['string', 'type', 'relation'] });
+    out.regionLikeFields = Object.entries(fields || {})
+      .filter(([name, f]) => /منطق|مدين|region|city|area|zone/i.test(`${f.string} ${name}`))
+      .map(([name, f]) => ({ name, label: f.string, type: f.type, relation: f.relation || null }));
+
+    out.resolvedCustomFields = await getSoCustomFields(auth);
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: sanitizeErrorMessage(e), raw: String(e.message || e) });
+  }
+});
+
 // Cache Clear
 app.post('/api/dashboard/refresh', async (req, res) => {
   const auth = await getAuthCredentials(req);
   if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
   clearCache();
-  res.json({ status: 'success', message: 'تم تحديث الذاكرة المؤقتة بنجاح' });
+  res.json({
+    status: 'success',
+    message: 'تم تحديث الذاكرة المؤقتة بنجاح',
+    stats: getCacheStats()
+  });
 });
 
 // Helper: Build Date Domain
@@ -278,10 +547,12 @@ function getDateRange(query) {
   const currentYear = now.getFullYear().toString();
   const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-  // 1. If explicit startDate & endDate are provided (from quick preset or custom date range)
-  if (query.startDate && query.endDate) {
-    const s = String(query.startDate).trim();
-    const e = String(query.endDate).trim();
+  // 1. If explicit startDate & endDate or start & end are provided (from quick preset or custom date range)
+  const explicitStart = query.startDate || query.start;
+  const explicitEnd = query.endDate || query.end;
+  if (explicitStart && explicitEnd) {
+    const s = String(explicitStart).trim();
+    const e = String(explicitEnd).trim();
     if (isoDateRegex.test(s) && isoDateRegex.test(e)) {
       return { start: s, end: e, year: s.slice(0, 4) };
     }
@@ -342,83 +613,70 @@ function asPositiveId(value) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-// Extracts distinct sales representatives strictly and exclusively from:
-// 1. Invoices (account.move, move_type = 'out_invoice') -> invoice_user_id
-// 2. Credit Notes (account.move, move_type = 'out_refund') -> invoice_user_id
-// 3. Sales Orders (sale.order) -> user_id
-// Strictly never from res.partner (customer contacts).
+function resolveCategoryId(queryCat, categoriesList) {
+  const numId = asPositiveId(queryCat);
+  if (numId) return numId;
+  if (!queryCat || typeof queryCat !== 'string') return null;
+  const trimmed = queryCat.trim();
+  if (!trimmed) return null;
+  const match = (categoriesList || []).find(c => 
+    c.name === trimmed || 
+    c.leafName === trimmed || 
+    c.complete_name === trimmed ||
+    c.rootName === trimmed ||
+    c.name.endsWith('/ ' + trimmed)
+  );
+  return match ? match.id : null;
+}
+
+// Filters and displays use only the custom salesperson field shown in Odoo's list view.
+function appendSalespersonFilter(domain, customField, repId, repName = null) {
+  if (!customField?.name) {
+    domain.push(['id', '=', -1]);
+  } else if (customField.type === 'many2one' && repId) {
+    domain.push([customField.name, '=', repId]);
+  } else {
+    domain.push([customField.name, '=', repName || repId]);
+  }
+}
+
 async function getDistinctRepsFromDocuments(auth) {
-  const cacheKey = `distinct_doc_reps_${auth.uid}`;
+  const cacheKey = `distinct_doc_reps_v3_${auth.uid}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   const repsMap = new Map();
 
-  try {
-    // 1. Invoices & Credit Notes (account.move) -> invoice_user_id
-    const invoiceReps = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-      [['move_type', 'in', ['out_invoice', 'out_refund']], ['invoice_user_id', '!=', false]],
-      ['amount_total:sum'],
-      ['invoice_user_id']
-    ]);
-    (invoiceReps || []).forEach(r => {
-      if (r.invoice_user_id && r.invoice_user_id[0] && r.invoice_user_id[1]) {
-        repsMap.set(r.invoice_user_id[0], {
-          id: r.invoice_user_id[0],
-          name: r.invoice_user_id[1]
-        });
-      }
-    });
-  } catch (e) {
-    console.warn('read_group invoice_user_id error, falling back to search_read:', e.message);
+  const [moveFields, soFields] = await Promise.all([
+    getMoveCustomFields(auth).catch(() => ({ rep: null })),
+    getSoCustomFields(auth).catch(() => ({ rep: null }))
+  ]);
+  for (const [model, customField] of [['account.move', moveFields?.rep], ['sale.order', soFields?.rep]]) {
+    if (customField?.type !== 'many2one') continue;
     try {
-      const moves = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
-        [['move_type', 'in', ['out_invoice', 'out_refund']], ['invoice_user_id', '!=', false]]
-      ], { fields: ['invoice_user_id'], limit: 10000 });
-      (moves || []).forEach(m => {
-        if (m.invoice_user_id && m.invoice_user_id[0] && m.invoice_user_id[1]) {
-          repsMap.set(m.invoice_user_id[0], { id: m.invoice_user_id[0], name: m.invoice_user_id[1] });
-        }
+      const groups = await odooExecuteKw(auth.uid, auth.password, model, 'read_group', [
+        [[customField.name, '!=', false]],
+        ['amount_total:sum'],
+        [customField.name]
+      ]);
+      (groups || []).forEach(group => {
+        const rep = group[customField.name];
+        if (rep?.[0] && rep?.[1]) repsMap.set(rep[0], { id: rep[0], name: rep[1] });
       });
-    } catch (err2) {
-      console.warn('Fallback search_read invoice_user_id also failed:', err2.message);
-    }
-  }
-
-  try {
-    // 2. Sales Orders (sale.order) -> user_id
-    const soReps = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
-      [['user_id', '!=', false]],
-      ['amount_total:sum'],
-      ['user_id']
-    ]);
-    (soReps || []).forEach(r => {
-      if (r.user_id && r.user_id[0] && r.user_id[1]) {
-        repsMap.set(r.user_id[0], {
-          id: r.user_id[0],
-          name: r.user_id[1]
-        });
-      }
-    });
-  } catch (e) {
-    console.warn('read_group user_id from sale.order error, falling back to search_read:', e.message);
-    try {
-      const sos = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'search_read', [
-        [['user_id', '!=', false]]
-      ], { fields: ['user_id'], limit: 10000 });
-      (sos || []).forEach(s => {
-        if (s.user_id && s.user_id[0] && s.user_id[1]) {
-          repsMap.set(s.user_id[0], { id: s.user_id[0], name: s.user_id[1] });
-        }
-      });
-    } catch (err2) {
-      console.warn('Fallback search_read user_id from sale.order also failed:', err2.message);
+    } catch (error) {
+      console.warn(`read_group ${model}.${customField.name} error:`, error.message);
     }
   }
 
   const distinctReps = [...repsMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
   setCached(cacheKey, distinctReps, 10 * 60 * 1000);
   return distinctReps;
+}
+
+async function getDistinctRepNameById(auth, repId) {
+  if (!repId) return null;
+  const reps = await getDistinctRepsFromDocuments(auth);
+  return reps.find(rep => String(rep.id) === String(repId))?.name || null;
 }
 
 async function getDateFacets(auth, source) {
@@ -438,18 +696,21 @@ async function getDateFacets(auth, source) {
       ];
 
   const yearsSet = new Set();
-  const currentYear = String(new Date().getFullYear());
-  yearsSet.add(currentYear);
+  const currentYearNum = new Date().getFullYear();
+  // Include operational history years 2020 through currentYear
+  for (let y = 2020; y <= Math.max(currentYearNum, 2026); y++) {
+    yearsSet.add(String(y));
+  }
 
-  // 1. Primary Query: read_group SQL/ORM query directly from PostgreSQL (no row count limit truncation)
+  // 1. Primary Query: read_group SQL query directly from PostgreSQL
   try {
     const yearGroups = await odooExecuteKw(
       auth.uid,
       auth.password,
       model,
       'read_group',
-      [domain, [dateField], [`${dateField}:year`]],
-      { orderby: `${dateField}:year desc`, limit: 100 }
+      [domain, ['amount_total:sum'], [`${dateField}:year`]],
+      0, 100, false, false
     );
     if (Array.isArray(yearGroups)) {
       yearGroups.forEach(g => {
@@ -470,13 +731,13 @@ async function getDateFacets(auth, source) {
       auth.password,
       model,
       'read_group',
-      [domain, [dateField], [`${dateField}:day`]],
-      { orderby: `${dateField}:day desc`, limit: 400 }
+      [domain, ['amount_total:sum'], [`${dateField}:day`]],
+      0, 400, false, false
     );
     if (Array.isArray(dayGroups)) {
       dayGroups.forEach(g => {
         const raw = String(g[`${dateField}:day`] || g[dateField] || '').slice(0, 10);
-        const match = raw.match(/^((?:19|20)\d{2})-\d{2}-\d{2}$/);
+        const match = raw.match(/^((?:19|20)\d{2}-\d{2}-\d{2})$/);
         if (match) {
           yearsSet.add(match[1].slice(0, 4));
           sampleDates.push(match[1]);
@@ -487,7 +748,7 @@ async function getDateFacets(auth, source) {
     console.warn(`read_group on ${dateField}:day failed:`, err.message);
   }
 
-  // 3. Fallback search_read ordered newest desc (never oldest asc)
+  // 3. Fallback search_read ordered newest desc
   if (sampleDates.length === 0) {
     try {
       const recentRows = await odooExecuteKw(
@@ -504,7 +765,7 @@ async function getDateFacets(auth, source) {
       );
       (recentRows || []).forEach(row => {
         const val = String(row[dateField] || '').slice(0, 10);
-        const match = val.match(/^((?:19|20)\d{2})-\d{2}-\d{2}$/);
+        const match = val.match(/^((?:19|20)\d{2}-\d{2}-\d{2})$/);
         if (match) {
           yearsSet.add(match[1].slice(0, 4));
           sampleDates.push(val);
@@ -622,6 +883,208 @@ function round2(val) {
   return Number.isFinite(num) ? Number(num.toFixed(2)) : 0;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Egyptian Cities & Governorates Dictionary for Accurate Geolocation
+// ─────────────────────────────────────────────────────────────
+const EGYPT_CITY_STATE_MAP = {
+  'دكرنس': 'الدقهلية',
+  'المنزلة': 'الدقهلية',
+  'محلة دمنة': 'الدقهلية',
+  'ميت غمر': 'الدقهلية',
+  'المنصورة': 'الدقهلية',
+  'بلقاس': 'الدقهلية',
+  'السنبلاوين': 'الدقهلية',
+  'شربين': 'الدقهلية',
+  'أجا': 'الدقهلية',
+  'طلخا': 'الدقهلية',
+  'منية النصر': 'الدقهلية',
+  'نبروه': 'الدقهلية',
+  'جمصة': 'الدقهلية',
+
+  'الشرقية': 'الشرقية',
+  'الزقازيق': 'الشرقية',
+  'العاشر من رمضان': 'الشرقية',
+  'العاشر': 'الشرقية',
+  'فاقوس': 'الشرقية',
+  'بلبيس': 'الشرقية',
+  'كفر صقر': 'الشرقية',
+  'مشتول السوق': 'الشرقية',
+  'مشتول': 'الشرقية',
+  'ابو حماد': 'الشرقية',
+  'أبو حماد': 'الشرقية',
+  'ابو كبير': 'الشرقية',
+  'أبو كبير': 'الشرقية',
+  'الحسينية': 'الشرقية',
+  'الصالحية': 'الشرقية',
+  'الصالحية الجديدة': 'الشرقية',
+  'ههيا': 'الشرقية',
+  'ديرب نجم': 'الشرقية',
+  'منيا القمح': 'الشرقية',
+  'الإبراهيمية': 'الشرقية',
+  'القنايات': 'الشرقية',
+  'أولاد صقر': 'الشرقية',
+
+  'كفر الشيخ': 'كفر الشيخ',
+  'دسوق': 'كفر الشيخ',
+  'فوه': 'كفر الشيخ',
+  'بيلا': 'كفر الشيخ',
+  'قلين': 'كفر الشيخ',
+  'سيدي سالم': 'كفر الشيخ',
+  'مطوبس': 'كفر الشيخ',
+  'الحامول': 'كفر الشيخ',
+
+  'الغربية': 'الغربية',
+  'طنطا': 'الغربية',
+  'المحلة الكبرى': 'الغربية',
+  'المحلة': 'الغربية',
+  'زفتى': 'الغربية',
+  'كفر الزيات': 'الغربية',
+  'سمنود': 'الغربية',
+  'بسيون': 'الغربية',
+
+  'دمياط': 'دمياط',
+  'رأس البر': 'دمياط',
+  'فارسكور': 'دمياط',
+  'الزرقا': 'دمياط',
+  'كفر سعد': 'دمياط',
+  'كفر البطيخ': 'دمياط',
+
+  'الفيوم': 'الفيوم',
+  'إبشواي': 'الفيوم',
+  'اطسا': 'الفيوم',
+  'طامية': 'الفيوم',
+  'سنورس': 'الفيوم',
+
+  'بني سويف': 'بني سويف',
+  'الواسطى': 'بني سويف',
+  'ناصر': 'بني سويف',
+  'ببا': 'بني سويف',
+  'الفشن': 'بني سويف',
+  'إهناسيا': 'بني سويف',
+
+  'المنيا': 'المنيا',
+  'ملوي': 'المنيا',
+  'مغاغة': 'المنيا',
+  'بني مزار': 'المنيا',
+  'سمالوط': 'المنيا',
+  'أبو قرقاص': 'المنيا',
+
+  'أسيوط': 'أسيوط',
+  'سوهاج': 'سوهاج',
+  'قنا': 'قنا',
+  'الأقصر': 'الأقصر',
+  'أسوان': 'أسوان',
+
+  'الاسكندرية': 'الاسكندرية',
+  'الإسكندرية': 'الاسكندرية',
+  'برج العرب': 'الاسكندرية',
+  'عزبة البرنس': 'الاسكندرية',
+
+  'الجيزة': 'الجيزة',
+  '6 أكتوبر': 'الجيزة',
+  'أكتوبر': 'الجيزة',
+  'الشيخ زايد': 'الجيزة',
+  'الهرم': 'الجيزة',
+  'فيصل': 'الجيزة',
+
+  'القاهرة': 'القاهرة',
+  'مدينة نصر': 'القاهرة',
+  'التجمع': 'القاهرة',
+  'المعادي': 'القاهرة',
+  'حلوان': 'القاهرة',
+
+  'السويس': 'السويس',
+  'الاسماعيلية': 'الاسماعيلية',
+  'الإسماعيلية': 'الاسماعيلية',
+  'القنطرة': 'الاسماعيلية',
+  'القنطرة غرب': 'الاسماعيلية',
+  'القنطرة شرق': 'الاسماعيلية',
+  'فايد': 'الاسماعيلية',
+  'التل الكبير': 'الاسماعيلية',
+  'القصاصين': 'الاسماعيلية',
+  'بورسعيد': 'بورسعيد',
+
+  'البحيرة': 'البحيرة',
+  'دمنهور': 'البحيرة',
+  'كفر الدوار': 'البحيرة',
+  'إيتاي البارود': 'البحيرة',
+  'أبو حمص': 'البحيرة',
+  'حوش عيسى': 'البحيرة',
+  'كوم حمادة': 'البحيرة',
+  'رشيد': 'البحيرة',
+  'إدكو': 'البحيرة',
+
+  'المنوفية': 'المنوفية',
+  'شبين الكوم': 'المنوفية',
+  'السادات': 'المنوفية',
+  'قويسنا': 'المنوفية',
+  'أشمون': 'المنوفية',
+  'منوف': 'المنوفية',
+  'الباجور': 'المنوفية',
+  'تلا': 'المنوفية',
+  'بركة السبع': 'المنوفية',
+
+  'القليوبية': 'القليوبية',
+  'بنها': 'القليوبية',
+  'شبرا الخيمة': 'القليوبية',
+  'طوخ': 'القليوبية',
+  'العبور': 'القليوبية',
+  'قليوب': 'القليوبية',
+  'الخانكة': 'القليوبية',
+  'شبين القناطر': 'القليوبية',
+  'كفر شكر': 'القليوبية',
+  'قها': 'القليوبية'
+};
+
+function resolvePartnerCityAndState(p, rawMap) {
+  let rawCity = (p?.city && typeof p.city === 'string') ? p.city.trim() : '';
+  let rawState = (p?.state_id && p.state_id[1]) ? p.state_id[1].replace(/\s*\(EG\)$/i, '').trim() : '';
+
+  // 1. If city missing, look up commercial partner or parent company
+  if (!rawCity && rawMap) {
+    const parentId = (p?.commercial_partner_id && p.commercial_partner_id[0])
+      ? p.commercial_partner_id[0]
+      : (p?.parent_id && p.parent_id[0] ? p.parent_id[0] : null);
+    if (parentId) {
+      const parent = rawMap.get(parentId);
+      if (parent?.city && typeof parent.city === 'string' && parent.city.trim()) {
+        rawCity = parent.city.trim();
+      }
+      if (!rawState && parent?.state_id && parent.state_id[1]) {
+        rawState = parent.state_id[1].replace(/\s*\(EG\)$/i, '').trim();
+      }
+    }
+  }
+
+  // 2. Scan partner name against known Egyptian cities ONLY (sorted by length descending for exact matching)
+  if (!rawCity && p?.name) {
+    const pName = String(p.name);
+    const sortedCities = Object.keys(EGYPT_CITY_STATE_MAP).sort((a, b) => b.length - a.length);
+    for (const knownCity of sortedCities) {
+      if (pName.includes(knownCity)) {
+        rawCity = knownCity;
+        if (!rawState) rawState = EGYPT_CITY_STATE_MAP[knownCity];
+        break;
+      }
+    }
+  }
+
+  // 3. Fallback to state as regional center (e.g. 'القليوبية' matching Odoo native row) to avoid 'غير محدد'
+  if (!rawCity && rawState) {
+    rawCity = rawState;
+  }
+
+  rawCity = (rawCity && rawCity !== 'غير محدد') ? rawCity : 'أخرى';
+
+  // 4. State deduction from city if missing
+  if (!rawState && rawCity !== 'أخرى') {
+    rawState = EGYPT_CITY_STATE_MAP[rawCity] || rawCity;
+  }
+  rawState = (rawState && rawState !== 'غير محدد') ? rawState : (rawCity !== 'أخرى' ? rawCity : 'أخرى');
+
+  return { city: rawCity, state: rawState };
+}
+
 function extractMoveAmount(summary) {
   if (!summary) return 0;
   if (summary.amount_total_signed !== undefined && summary.amount_total_signed !== null) {
@@ -644,6 +1107,17 @@ function extractMoveUntaxed(summary) {
     return Math.abs(Number(summary.amount_untaxed_signed) || 0);
   }
   return Math.abs(Number(summary.amount_untaxed) || 0);
+}
+
+function extractPaymentAmount(summary) {
+  if (!summary) return 0;
+  if (summary.amount !== undefined && summary.amount !== null) {
+    return Math.abs(Number(summary.amount) || 0);
+  }
+  if (summary['amount:sum'] !== undefined && summary['amount:sum'] !== null) {
+    return Math.abs(Number(summary['amount:sum']) || 0);
+  }
+  return 0;
 }
 
 function aggregateTimeGroups(groups, groupField, bucketType = 'month') {
@@ -690,19 +1164,34 @@ async function buildGrowthAnalysis(auth, currentDomain, start, end, comparisonMo
   if (!previousRange) return { regions: [], customers: [], churnWarnings: [], previousRange: null };
 
   const previousDomain = replaceDateDomain(currentDomain, previousRange.start, previousRange.end);
-  const currentGroups = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [currentDomain, ['amount_total_signed:sum', 'amount_total:sum'], ['partner_id', 'move_type'], 0, 1000]);
-  const previousGroups = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [previousDomain, ['amount_total_signed:sum', 'amount_total:sum'], ['partner_id', 'move_type'], 0, 1000]);
-  const currentMonthGroups = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [currentDomain, ['amount_total_signed:sum', 'amount_total:sum'], ['invoice_date:month', 'move_type']]);
-  const previousMonthGroups = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [previousDomain, ['amount_total_signed:sum', 'amount_total:sum'], ['invoice_date:month', 'move_type']]);
+  const [currentGroups, previousGroups] = await Promise.all([
+    odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+      currentDomain,
+      ['amount_total_signed:sum', 'amount_total:sum'],
+      ['partner_id'],
+      0, 2000, false, false
+    ]).catch(() => []),
+    odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+      previousDomain,
+      ['amount_total_signed:sum', 'amount_total:sum'],
+      ['partner_id'],
+      0, 2000, false, false
+    ]).catch(() => [])
+  ]);
 
   const toCustomerMap = (groups) => {
     const values = new Map();
-    groups.forEach(group => {
+    (groups || []).forEach(group => {
       if (!group.partner_id) return;
       const id = group.partner_id[0];
-      const sign = group.move_type === 'out_refund' ? -1 : 1;
-      const amt = extractMoveAmount(group);
-      values.set(id, (values.get(id) || 0) + sign * amt);
+      let val = 0;
+      if (group.amount_total_signed !== undefined && group.amount_total_signed !== null) {
+        val = Number(group.amount_total_signed) || 0;
+      } else {
+        const sign = group.move_type === 'out_refund' ? -1 : 1;
+        val = sign * (Number(group.amount_total) || 0);
+      }
+      values.set(id, (values.get(id) || 0) + val);
     });
     return values;
   };
@@ -710,18 +1199,18 @@ async function buildGrowthAnalysis(auth, currentDomain, start, end, comparisonMo
   const previousCustomers = toCustomerMap(previousGroups);
   const customerIds = new Set([...currentCustomers.keys(), ...previousCustomers.keys()]);
   const customers = [...customerIds].map(id => {
-    const info = partnerMap.get(id) || { name: 'غير محدد', state: 'غير محدد', city: 'غير محدد' };
-    const currentSales = round2(currentCustomers.get(id) || 0);
-    const previousSales = round2(previousCustomers.get(id) || 0);
+    const info = partnerMap.get(id) || { name: 'غير محدد', state: 'غير محدد', city: 'غير محدد', rep: 'غير محدد' };
+    const currentSales = round2(Math.max(0, currentCustomers.get(id) || 0));
+    const previousSales = round2(Math.max(0, previousCustomers.get(id) || 0));
     const growthAmount = round2(currentSales - previousSales);
     const growthPercent = percentChange(currentSales, previousSales);
     const lossAmount = Math.max(0, round2(previousSales - currentSales));
     return {
       id,
-      name: info.name,
-      state: info.state,
-      city: info.city,
-      rep: 'غير محدد',
+      name: info.name || `عميل #${id}`,
+      state: info.state || 'غير محدد',
+      city: info.city || 'غير محدد',
+      rep: info.rep || 'غير محدد',
       currentSales,
       previousSales,
       growthAmount,
@@ -746,12 +1235,14 @@ async function buildGrowthAnalysis(auth, currentDomain, start, end, comparisonMo
     growthPercent: percentChange(region.currentSales, region.previousSales)
   })).sort((a, b) => b.currentSales - a.currentSales);
 
-  const threshold = Number(process.env.CHURN_THRESHOLD_PERCENT || 30);
-  const minimumPreviousSales = Number(process.env.CHURN_MIN_PREVIOUS_SALES || 25000);
+  // Churn / Sales drop warnings: any customer with previous sales whose sales declined or stopped completely
   const churnWarnings = customers
-    .filter(customer => customer.previousSales >= minimumPreviousSales && customer.growthPercent <= -threshold)
+    .filter(customer => customer.previousSales > 0 && customer.growthAmount < 0)
     .sort((a, b) => b.lossAmount - a.lossAmount || a.growthPercent - b.growthPercent)
-    .map(customer => ({ ...customer, risk: customer.growthPercent <= -50 ? 'مرتفع' : 'متوسط' }));
+    .map(customer => ({
+      ...customer,
+      risk: (customer.currentSales === 0 || customer.growthPercent <= -50) ? 'مرتفع' : 'متوسط'
+    }));
 
   const topDeclining = customers
     .filter(customer => customer.growthAmount < 0)
@@ -790,21 +1281,18 @@ async function buildGrowthAnalysis(auth, currentDomain, start, end, comparisonMo
     }
   };
 
-  const monthLabels = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
   return {
+    source: 'postedInvoice',
     regions,
     customers,
-    churnWarnings: churnWarnings.slice(0, 50),
+    churnWarnings,
     topDeclining,
     topGrowing,
     customerGrowthChart,
     previousRange,
-    threshold,
-    minimumPreviousSales,
-    timeSeries: {
-      month: buildTimeSeries(currentMonthGroups, previousMonthGroups, 'invoice_date:month', monthLabels),
-      year: buildTimeSeries(currentMonthGroups, previousMonthGroups, 'invoice_date:month', [], 'year')
-    }
+    threshold: 0,
+    minimumPreviousSales: 0,
+    timeSeries: null
   };
 }
 
@@ -813,200 +1301,754 @@ async function getProductCatalog(auth) {
   let categories = getCached('product_categories');
   if (!productCatalog || !categories) {
     const [rawProducts, rawCategories] = await Promise.all([
-      odooExecuteKw(auth.uid, auth.password, 'product.product', 'search_read', [[]], { fields: ['id', 'name', 'categ_id'], limit: 10000 }),
-      odooExecuteKw(auth.uid, auth.password, 'product.category', 'search_read', [[]], { fields: ['id', 'name'], limit: 10000 })
+      odooExecuteKw(auth.uid, auth.password, 'product.product', 'search_read', [[['active', '=', true]]], { fields: ['id', 'name', 'categ_id'], limit: 15000 }).catch(() => []),
+      odooExecuteKw(auth.uid, auth.password, 'product.category', 'search_read', [[]], { fields: ['id', 'name', 'complete_name', 'parent_id', 'parent_path'], limit: 1000 }).catch(() =>
+        odooExecuteKw(auth.uid, auth.password, 'product.category', 'search_read', [[]], { fields: ['id', 'name', 'parent_id'], limit: 1000 }).catch(() => [])
+      )
     ]);
-    productCatalog = rawProducts.map(p => ({ id: p.id, name: p.name, categoryId: p.categ_id?.[0], categoryName: p.categ_id?.[1] })).filter(p => p.name);
-    const categoriesById = new Map(rawCategories.map(c => [c.id, { id: c.id, name: c.name }]));
+
+    productCatalog = (rawProducts || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      categoryId: p.categ_id?.[0],
+      categoryName: p.categ_id?.[1]
+    })).filter(p => p.name);
+
+    const rawCatMap = new Map((rawCategories || []).map(c => [c.id, c]));
+
+    const getParentId = (c) => {
+      if (!c || !c.parent_id) return null;
+      return Array.isArray(c.parent_id) ? c.parent_id[0] : c.parent_id;
+    };
+
+    const buildCatPath = (catId, visited = new Set()) => {
+      if (!catId || visited.has(catId)) return '';
+      visited.add(catId);
+      const cat = rawCatMap.get(catId);
+      if (!cat) return '';
+      if (cat.complete_name && !cat.complete_name.includes('All / ') && !cat.complete_name.includes('الكل / ')) {
+        return cat.complete_name;
+      }
+      const pId = getParentId(cat);
+      if (!pId || !rawCatMap.has(pId)) return cat.name;
+      const parentCat = rawCatMap.get(pId);
+      if (parentCat && (parentCat.name === 'All' || parentCat.name === 'الكل')) {
+        return cat.name;
+      }
+      const parentPath = buildCatPath(pId, visited);
+      return parentPath ? `${parentPath} / ${cat.name}` : cat.name;
+    };
+
+    // If any product has a category not present in rawCatMap, register it
     productCatalog.forEach(p => {
-      if (p.categoryId && p.categoryName) categoriesById.set(p.categoryId, { id: p.categoryId, name: p.categoryName });
+      if (p.categoryId && !rawCatMap.has(p.categoryId)) {
+        rawCatMap.set(p.categoryId, {
+          id: p.categoryId,
+          name: p.categoryName || 'فئة غير محددة',
+          complete_name: p.categoryName || 'فئة غير محددة'
+        });
+      }
     });
-    categories = [...categoriesById.values()].filter(c => c.name);
-    setCached('product_catalog', productCatalog, 30 * 60 * 1000);
-    setCached('product_categories', categories, 30 * 60 * 1000);
+
+    const parentIdSet = new Set();
+    rawCatMap.forEach(c => {
+      const pId = getParentId(c);
+      if (pId) parentIdSet.add(pId);
+    });
+
+    const processedCats = [];
+    rawCatMap.forEach((c) => {
+      // Exclude top-level "All" container if it has no parent
+      if ((c.name === 'All' || c.name === 'الكل') && !getParentId(c)) return;
+
+      let fullPath = c.complete_name || buildCatPath(c.id) || c.name;
+      fullPath = fullPath.replace(/^(All|الكل|جميع الفئات)\s*\/\s*/i, '').trim();
+      if (!fullPath) return;
+
+      const segments = fullPath.split(' / ').map(s => s.trim()).filter(Boolean);
+      const level = Math.max(0, segments.length - 1);
+      const rootName = segments[0] || c.name;
+      const leafName = segments[segments.length - 1] || c.name;
+      const parentPath = segments.slice(0, -1).join(' › ');
+
+      processedCats.push({
+        id: c.id,
+        name: fullPath,
+        complete_name: fullPath,
+        leafName,
+        parentPath,
+        rootName,
+        level,
+        isParent: parentIdSet.has(c.id),
+        isRoot: level === 0,
+        sortKey: segments.join(' / ')
+      });
+    });
+
+    // Hierarchical tree sort: group by root category, ensure root is first, then DFS path order
+    processedCats.sort((a, b) => {
+      if (a.rootName !== b.rootName) {
+        return a.rootName.localeCompare(b.rootName, 'ar');
+      }
+      if (a.isRoot !== b.isRoot) {
+        return a.isRoot ? -1 : 1;
+      }
+      return a.sortKey.localeCompare(b.sortKey, 'ar', { numeric: true });
+    });
+
+    categories = processedCats;
+    setCached('product_catalog', productCatalog, 60 * 60 * 1000);
+    setCached('product_categories', categories, 60 * 60 * 1000);
   }
   return { productCatalog, categories };
 }
 
-async function buildSalesOrderOverview(auth, query) {
-  const { start, end, year } = getDateRange(query);
-  const status = query.salesOrderStatus || 'all';
-  const orderDomain = [['date_order', '>=', `${start} 00:00:00`], ['date_order', '<=', `${end} 23:59:59`]];
-  if (status === 'post') orderDomain.push(['state', 'in', ['sale', 'done']]);
-  else if (status === 'draft') orderDomain.push(['state', '=', 'draft']);
-  else orderDomain.push(['state', 'in', ['draft', 'sale', 'done']]);
-
-  const [{ productCatalog, categories }, rawPartners, rawOrders] = await Promise.all([
-    getProductCatalog(auth),
-    odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [[['customer_rank', '>', 0]]], { fields: ['id', 'name', 'state_id', 'city'], limit: 10000 }),
-    odooExecuteKw(auth.uid, auth.password, 'sale.order', 'search_read', [orderDomain], { fields: ['id', 'name', 'date_order', 'partner_id', 'user_id', 'amount_total', 'invoice_ids'], limit: 10000 })
-  ]);
-  const partners = new Map(rawPartners.map(p => [p.id, {
-    id: p.id, name: p.name, state: p.state_id ? p.state_id[1].replace(/\s*\(EG\)$/i, '').trim() : 'غير محدد', city: p.city || 'غير محدد'
-  }]));
-  const repId = asPositiveId(query.rep);
-  const customerId = asPositiveId(query.customer);
-  const search = String(query.query || '').toLowerCase();
-  let orders = rawOrders.filter(order => {
-    const partner = partners.get(order.partner_id?.[0]) || {};
-    return (!query.region || partner.state === query.region)
-      && (!query.city || partner.city === query.city)
-      && (!repId || order.user_id?.[0] === repId)
-      && (!customerId || order.partner_id?.[0] === customerId)
-      && (!search || [order.name, partner.name, partner.state, partner.city, order.user_id?.[1]].some(v => String(v || '').toLowerCase().includes(search)));
-  });
-  const orderIds = orders.map(o => o.id);
-  const orderNames = orders.map(o => o.name).filter(Boolean);
-  const lines = orderIds.length ? await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [[['order_id', 'in', orderIds], ['display_type', '=', false]]], { fields: ['order_id', 'product_id', 'product_uom_qty', 'price_subtotal'], limit: 50000 }) : [];
-  const productId = asPositiveId(query.product);
-  const categoryId = asPositiveId(query.category);
-  let filteredLines = lines;
-  if (productId || categoryId) {
-    const productDomain = productId ? [['product_id', '=', productId]] : [['product_id.categ_id', 'child_of', categoryId]];
-    const matching = await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [[['order_id', 'in', orderIds], ...productDomain]], { fields: ['id', 'order_id'], limit: 50000 });
-    const matchingOrderIds = new Set(matching.map(line => line.order_id?.[0]));
-    orders = orders.filter(order => matchingOrderIds.has(order.id));
-    const remainingIds = new Set(orders.map(order => order.id));
-    filteredLines = lines.filter(line => remainingIds.has(line.order_id?.[0]) && (!productId || line.product_id?.[0] === productId));
+// ─────────────────────────────────────────────────────────────
+// Unified Partner Lookup Helper with Shared 1-Hour Cache
+// ─────────────────────────────────────────────────────────────
+async function getPartnersLookup(auth) {
+  let partnerMap = getCached('partners_map');
+  let allPartnersList = getCached('partners_list');
+  if (partnerMap && allPartnersList) {
+    return { partnerMap, allPartnersList };
   }
 
-  // Related invoice IDs from matched orders
-  const invoiceIds = [...new Set(orders.flatMap(order => order.invoice_ids || []))];
+  const rawPartners = await odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [
+    []
+  ], { fields: ['id', 'name', 'state_id', 'city', 'phone', 'user_id', 'parent_id', 'commercial_partner_id'], limit: 50000 }).catch(err => {
+    console.warn('search_read all partners failed, falling back to active query:', err.message);
+    return odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [
+      ['|', ['customer_rank', '>', 0], ['active', '=', true]]
+    ], { fields: ['id', 'name', 'state_id', 'city', 'phone', 'user_id', 'parent_id', 'commercial_partner_id'], limit: 30000 }).catch(() => []);
+  });
 
-  // Base refund domain for period-based returns matching active filters
-  const refundDomain = [
-    ['state', '=', 'posted'],
-    ['move_type', '=', 'out_refund'],
-    ['invoice_date', '>=', start],
-    ['invoice_date', '<=', end]
-  ];
-  if (repId) refundDomain.push(['invoice_user_id', '=', repId]);
-  if (customerId) refundDomain.push(['partner_id', '=', customerId]);
-  else if (query.region || query.city) {
-    const allowedPartnerIds = [...partners.values()]
+  const rawMap = new Map((rawPartners || []).map(p => [p.id, p]));
+  partnerMap = new Map();
+  allPartnersList = [];
+
+  (rawPartners || []).forEach(p => {
+    const { city, state } = resolvePartnerCityAndState(p, rawMap);
+    const partnerObj = {
+      id: p.id,
+      name: p.name,
+      state,
+      city,
+      rep: (p.user_id && p.user_id[1]) ? p.user_id[1] : 'غير محدد',
+      repId: (p.user_id && p.user_id[0]) ? p.user_id[0] : null,
+      phone: p.phone || ''
+    };
+    partnerMap.set(p.id, partnerObj);
+    allPartnersList.push(partnerObj);
+  });
+
+  setCached('partners_map', partnerMap, 60 * 60 * 1000);
+  setCached('partners_list', allPartnersList, 60 * 60 * 1000);
+  return { partnerMap, allPartnersList };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sales Team Targets Lookup Helper from Odoo
+// ─────────────────────────────────────────────────────────────
+async function getOdooTeamTargets(auth) {
+  const cacheKey = 'odoo_team_targets';
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  const targetMap = new Map();
+  try {
+    const teams = await odooExecuteKw(auth.uid, auth.password, 'crm.team', 'search_read', [
+      [['invoiced_target', '>', 0]]
+    ], { fields: ['id', 'name', 'user_id', 'member_ids', 'invoiced_target'], limit: 100 }).catch(() => []);
+
+    (teams || []).forEach(team => {
+      const target = Number(team.invoiced_target) || 0;
+      if (target > 0) {
+        if (team.user_id && team.user_id[0]) {
+          targetMap.set(team.user_id[0], target);
+        }
+        if (Array.isArray(team.member_ids)) {
+          team.member_ids.forEach(uid => {
+            if (!targetMap.has(uid)) targetMap.set(uid, target);
+          });
+        }
+      }
+    });
+  } catch (err) {
+    console.warn('getOdooTeamTargets search_read failed:', err.message);
+  }
+
+  setCached(cacheKey, targetMap, 30 * 60 * 1000);
+  return targetMap;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Account Payment Valid Fields Lookup Helper from Odoo
+// ─────────────────────────────────────────────────────────────
+async function getAccountPaymentFields(auth) {
+  const cacheKey = 'account_payment_fields';
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const fieldsInfo = await odooExecuteKw(auth.uid, auth.password, 'account.payment', 'fields_get', [], { attributes: ['type'] });
+    if (fieldsInfo && typeof fieldsInfo === 'object') {
+      const candidates = ['id', 'name', 'date', 'amount', 'payment_type', 'partner_type', 'partner_id', 'journal_id', 'state', 'ref', 'memo', 'communication', 'payment_reference'];
+      const validFields = candidates.filter(f => Boolean(fieldsInfo[f]));
+      if (validFields.length > 0) {
+        setCached(cacheKey, validFields, 24 * 60 * 60 * 1000);
+        return validFields;
+      }
+    }
+  } catch (err) {
+    console.warn('fields_get on account.payment failed:', err.message);
+  }
+
+  // Safe fallback fields that exist in all Odoo versions
+  return ['id', 'name', 'date', 'amount', 'partner_id', 'journal_id', 'state'];
+}
+
+// ─────────────────────────────────────────────────────────────
+// Odoo-fidelity helpers (Cairo timezone + custom sale.order fields)
+// ─────────────────────────────────────────────────────────────
+function cairoOffsetHours(dateStr) {
+  try {
+    const d = new Date(`${dateStr}T12:00:00Z`);
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).formatToParts(d);
+    let h = Number(parts.find(p => p.type === 'hour').value);
+    if (h === 24) h = 0;
+    return h - 12;
+  } catch (e) { return 2; }
+}
+
+// Converts a local (Cairo) calendar range to the UTC datetime strings Odoo stores in date_order.
+function cairoUtcRange(start, end) {
+  const toUtc = (dateStr, time) => {
+    const base = new Date(`${dateStr}T${time}Z`);
+    base.setUTCHours(base.getUTCHours() - cairoOffsetHours(dateStr));
+    return base.toISOString().replace('T', ' ').slice(0, 19);
+  };
+  return { from: toUtc(start, '00:00:00'), to: toUtc(end, '23:59:59') };
+}
+
+// UTC "YYYY-MM-DD HH:MM:SS" -> Cairo "YYYY-MM-DD"
+function cairoDateOf(utcDateTime) {
+  if (!utcDateTime) return '';
+  const day = String(utcDateTime).split(' ')[0];
+  const d = new Date(String(utcDateTime).replace(' ', 'T') + 'Z');
+  if (isNaN(d.getTime())) return day;
+  d.setUTCHours(d.getUTCHours() + cairoOffsetHours(day));
+  return d.toISOString().slice(0, 10);
+}
+
+const normalizeArabicLabel = (s) => String(s || '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/ى/g, 'ي')
+  .replace(/[()\s_\-]/g, '')
+  .toLowerCase();
+
+function findMatchingField(entries, candidateLabels, excludeNames = []) {
+  const normCandidates = candidateLabels.map(normalizeArabicLabel);
+  // 1. Exact normalized match first
+  for (const cand of normCandidates) {
+    const hit = entries.find(([name, f]) => !excludeNames.includes(name) && normalizeArabicLabel(f.string) === cand);
+    if (hit) return { name: hit[0], type: hit[1].type, relation: hit[1].relation || null, label: hit[1].string };
+  }
+  // 2. Substring / contains match
+  for (const cand of normCandidates) {
+    const hit = entries.find(([name, f]) => !excludeNames.includes(name) && (normalizeArabicLabel(f.string).includes(cand) || cand.includes(normalizeArabicLabel(f.string))));
+    if (hit) return { name: hit[0], type: hit[1].type, relation: hit[1].relation || null, label: hit[1].string };
+  }
+  return null;
+}
+
+// Finds the custom fields Odoo's list view groups by. Cached for a day.
+async function getSoCustomFields(auth) {
+  const cacheKey = 'so_custom_fields_v3';
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+  const result = { rep: null, region: null, city: null };
+  try {
+    const fields = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'fields_get', [], { attributes: ['string', 'type', 'relation', 'store'] });
+    const entries = Object.entries(fields || {}).filter(([, f]) => f.store !== false && ['many2one', 'char', 'selection'].includes(f.type));
+
+    result.region = findMatchingField(entries, ['المنطقة الجغرافية', 'المنطقه الجغرافيه', 'المنطقة', 'المنطقه', 'منطقة جغرافية', 'منطقه جغرافيه', 'منطقة', 'منطقه', 'الإقليم', 'المحافظة', 'region', 'zone']);
+    result.rep = findMatchingField(entries, ['مندوب المبيعات', 'مندوب مبيعات', 'مندوب', 'المندوب', 'مسؤول المبيعات', 'البائع', 'salesperson', 'sales_person', 'rep']);
+    result.city = findMatchingField(entries, ['المدينة', 'المدينه', 'مدينة', 'مدينه', 'الفرع', 'city', 'branch']);
+
+    console.log('[SO] custom fields resolved:', JSON.stringify(result));
+    if (result.rep || result.region) setCached(cacheKey, result, 24 * 60 * 60 * 1000);
+  } catch (e) {
+    console.warn('[SO] getSoCustomFields failed:', e.message);
+  }
+  return result;
+}
+
+// Finds the custom fields on account.move Odoo's list view groups by (e.g. 'مندوب المبيعات', 'المنطقة الجغرافية', 'المدينة')
+async function getMoveCustomFields(auth) {
+  const cacheKey = 'move_custom_fields_v4';
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+  const result = { rep: null, region: null, city: null };
+  try {
+    const fields = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'fields_get', [], { attributes: ['string', 'type', 'relation', 'store'] });
+    const entries = Object.entries(fields || {}).filter(([, f]) => f.store !== false && ['many2one', 'char', 'selection'].includes(f.type));
+
+    result.region = findMatchingField(entries, ['المنطقة الجغرافية', 'المنطقه الجغرافيه', 'المنطقة', 'المنطقه', 'منطقة جغرافية', 'منطقه جغرافيه', 'منطقة', 'منطقه', 'الإقليم', 'المحافظة', 'region', 'zone']);
+    result.rep = findMatchingField(entries, ['مندوب المبيعات', 'مندوب مبيعات', 'مندوب', 'المندوب', 'مسؤول المبيعات', 'البائع', 'salesperson', 'sales_person', 'rep'], ['invoice_user_id', 'user_id']);
+    result.city = findMatchingField(entries, ['المدينة', 'المدينه', 'مدينة', 'مدينه', 'الفرع', 'city', 'branch']);
+
+    console.log('[Move] custom fields resolved:', JSON.stringify(result));
+    if (result.rep || result.region) setCached(cacheKey, result, 24 * 60 * 60 * 1000);
+  } catch (e) {
+    console.warn('[Move] getMoveCustomFields failed:', e.message);
+  }
+  return result;
+}
+
+// Reads many2one ([id,name]) / char / selection values uniformly into { key, name }
+function fieldValue(raw, fallbackName = 'غير محدد') {
+  if (Array.isArray(raw)) return { key: raw[0], name: raw[1] || fallbackName };
+  if (raw === false || raw === null || raw === undefined || raw === '') return { key: null, name: fallbackName };
+  return { key: String(raw), name: String(raw) };
+}
+
+function paymentQueryFailedGuard(data) {
+  return Boolean(data && data._partial);
+}
+
+async function buildSalesOrderOverview(auth, query) {
+  const { start, end, year } = getDateRange(query);
+  const status = String(query.salesOrderStatus || 'all').toLowerCase();
+  const isDraftStatus = status === 'draft';
+
+  const repId = asPositiveId(query.rep);
+  const repName = await getDistinctRepNameById(auth, repId);
+  const customerId = asPositiveId(query.customer);
+  const productId = asPositiveId(query.product);
+  const search = String(query.query || '').toLowerCase();
+
+  const [{ productCatalog, categories }, { partnerMap: partners, allPartnersList }, odooTargetMap, soFields, dateFacets] = await Promise.all([
+    getProductCatalog(auth).catch(() => ({ productCatalog: [], categories: [] })),
+    getPartnersLookup(auth).catch(() => ({ partnerMap: new Map(), allPartnersList: [] })),
+    getOdooTeamTargets(auth).catch(() => new Map()),
+    getSoCustomFields(auth).catch(() => ({ rep: null, region: null, city: null })),
+    getDateFacets(auth, 'salesOrder').catch(() => ({}))
+  ]);
+  const categoryId = resolveCategoryId(query.category, categories);
+
+  let allowedPartnerIds = [];
+  if (query.region || query.city) {
+    allowedPartnerIds = [...partners.values()]
       .filter(p => !query.region || p.state === query.region)
       .filter(p => !query.city || p.city === query.city)
       .map(p => p.id);
-    if (allowedPartnerIds.length) refundDomain.push(['partner_id', 'in', allowedPartnerIds]);
-    else refundDomain.push(['id', '=', 0]);
+    if (!allowedPartnerIds.length) allowedPartnerIds = [-1];
   }
 
-  // Linked refunds condition (via order.invoice_ids, reversed_entry_id, or invoice_origin)
-  const linkedRefundConditions = [];
-  if (invoiceIds.length > 0) {
-    linkedRefundConditions.push(['reversed_entry_id', 'in', invoiceIds]);
-    linkedRefundConditions.push(['id', 'in', invoiceIds]);
-  }
-  if (orderNames.length > 0 && orderNames.length < 500) {
-    linkedRefundConditions.push(['invoice_origin', 'in', orderNames]);
+  // Cairo UTC Datetime Range for date_order
+  const soUtc = cairoUtcRange(start, end);
+  const orderDomain = [
+    ['date_order', '>=', soUtc.from],
+    ['date_order', '<=', soUtc.to]
+  ];
+  if (status === 'post') orderDomain.push(['state', 'in', ['sale', 'done']]);
+  else if (status === 'draft') orderDomain.push(['state', 'in', ['draft', 'sent']]);
+  else orderDomain.push(['state', '!=', 'cancel']);
+
+  if (repId) appendSalespersonFilter(orderDomain, soFields?.rep, repId, repName);
+  if (customerId) orderDomain.push(['partner_id', '=', customerId]);
+  else if (allowedPartnerIds.length) orderDomain.push(['partner_id', 'in', allowedPartnerIds]);
+  if (productId) orderDomain.push(['order_line.product_id', '=', productId]);
+  if (categoryId) orderDomain.push(['order_line.product_id.categ_id', 'child_of', categoryId]);
+  if (search) {
+    const matchingProducts = (productCatalog || []).filter(p => p.name.toLowerCase().includes(search));
+    const matchingProdIds = matchingProducts.map(p => p.id);
+    const searchClauses = [
+      ['name', 'ilike', search],
+      ['partner_id.name', 'ilike', search]
+    ];
+    if (soFields?.rep?.name) searchClauses.push([`${soFields.rep.name}.name`, 'ilike', search]);
+    if (matchingProdIds.length) searchClauses.push(['order_line.product_id', 'in', matchingProdIds]);
+    for (let i = 0; i < searchClauses.length - 1; i++) orderDomain.push('|');
+    searchClauses.forEach(c => orderDomain.push(c));
   }
 
-  const invoiceSearchDomain = invoiceIds.length ? [[['id', 'in', invoiceIds], ['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']]]] : null;
+  // Payment domain
+  const paymentDomain = [
+    ['partner_type', '=', 'customer'],
+    ['state', 'in', ['in_process', 'inprocess', 'paid', 'posted']],
+    ['date', '>=', start],
+    ['date', '<=', end]
+  ];
+  if (customerId) paymentDomain.push(['partner_id', '=', customerId]);
+  else if (allowedPartnerIds.length) paymentDomain.push(['partner_id', 'in', allowedPartnerIds]);
+  if (repId) {
+    const repPartnerIds = (allPartnersList || []).filter(p => p.repId === repId).map(p => p.id);
+    paymentDomain.push(['partner_id', 'in', repPartnerIds.length ? repPartnerIds : [-1]]);
+  }
 
-  const [invoiceMoves, periodRefunds, linkedRefunds] = await Promise.all([
-    invoiceSearchDomain ? odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', invoiceSearchDomain, { fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'move_type', 'amount_total_signed', 'amount_total', 'amount_residual_signed', 'amount_residual', 'invoice_date', 'ref'], limit: 50000 }).catch(() => []) : [],
-    odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [refundDomain], {
-      fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'amount_total_signed', 'amount_total', 'amount_residual_signed', 'amount_residual', 'invoice_date', 'ref', 'invoice_origin'],
-      limit: 10000
-    }).catch(() => []),
-    linkedRefundConditions.length > 0 ? odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[
-      ['state', '=', 'posted'],
-      ['move_type', '=', 'out_refund'],
-      ...(linkedRefundConditions.length > 1 ? ['|'.repeat(linkedRefundConditions.length - 1), ...linkedRefundConditions] : linkedRefundConditions)
-    ]], {
-      fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'amount_total_signed', 'amount_total', 'amount_residual_signed', 'amount_residual', 'invoice_date', 'ref', 'invoice_origin'],
-      limit: 10000
-    }).catch(() => []) : []
+  // Yearly monthly series cached
+  const isLastYearComp = (query.comparison || 'previousPeriod') === 'samePeriodLastYear';
+  const prevYearNum = Number(year) - 1;
+  const yearKey = `monthly_series_so_${auth.uid}_${year}_${repId || 0}_${customerId || 0}_${status}`;
+  let yearlySeriesData = getCached(yearKey);
+
+  // Comparison setup
+  const previousRange = comparisonRange(start, end, query.comparison || 'previousPeriod');
+
+  const soFieldsToFetch = ['id', 'name', 'date_order', 'partner_id', 'user_id', 'amount_total', 'amount_untaxed', 'state', 'invoice_ids'];
+  if (soFields?.rep?.name && !soFieldsToFetch.includes(soFields.rep.name)) soFieldsToFetch.push(soFields.rep.name);
+  if (soFields?.region?.name && !soFieldsToFetch.includes(soFields.region.name)) soFieldsToFetch.push(soFields.region.name);
+
+  // 1. Parallel Batch 1: Orders, Lines, Refunds, Payments, Yearly Series, Comparison
+  const [rawOrders, rawPayments, rawCustomerPayments, fetchedYearlyData, prevOrdersData, prevPaymentsData] = await Promise.all([
+    odooExecuteKw(auth.uid, auth.password, 'sale.order', 'search_read', [orderDomain], {
+      fields: soFieldsToFetch,
+      limit: 5000,
+      order: 'date_order desc, id desc'
+    }).catch(err => { console.warn('[SO] search_read orders failed:', err.message); return []; }),
+    odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+      paymentDomain,
+      ['amount:sum'],
+      ['payment_type']
+    ]).catch(() => []),
+    odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+      paymentDomain,
+      ['amount:sum'],
+      ['partner_id', 'payment_type'],
+      0, 5000, false, false
+    ]).catch(() => []),
+    yearlySeriesData ? Promise.resolve(yearlySeriesData) : Promise.all([
+      odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
+        [
+          ...orderDomain.filter(item => Array.isArray(item) ? item[0] !== 'date_order' : true),
+          ['date_order', '>=', `${year}-01-01 00:00:00`],
+          ['date_order', '<=', `${year}-12-31 23:59:59`]
+        ],
+        ['amount_total:sum'],
+        ['date_order:month'],
+        0, 100, 'date_order:month asc'
+      ]).catch(() => []),
+      odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
+        [
+          ...orderDomain.filter(item => Array.isArray(item) ? item[0] !== 'date_order' : true),
+          ['date_order', '>=', `${prevYearNum}-01-01 00:00:00`],
+          ['date_order', '<=', `${prevYearNum}-12-31 23:59:59`]
+        ],
+        ['amount_total:sum'],
+        ['date_order:month'],
+        0, 100, 'date_order:month asc'
+      ]).catch(() => [])
+    ]).then(([curYearOrders, prevYearOrders]) => {
+      const data = { curYearOrders, prevYearOrders };
+      setCached(yearKey, data, 30 * 60 * 1000);
+      return data;
+    }),
+    previousRange ? (async () => {
+      const prevUtc = cairoUtcRange(previousRange.start, previousRange.end);
+      const prevDomain = [
+        ...orderDomain.filter(item => Array.isArray(item) ? item[0] !== 'date_order' : true),
+        ['date_order', '>=', prevUtc.from],
+        ['date_order', '<=', prevUtc.to]
+      ];
+      return odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
+        prevDomain,
+        ['amount_total:sum'],
+        ['partner_id'],
+        0, 5000, false, false
+      ]).catch(() => []);
+    })() : Promise.resolve([]),
+    previousRange ? (async () => {
+      const prevPayDomain = [
+        ...paymentDomain.filter(item => Array.isArray(item) ? item[0] !== 'date' : true),
+        ['date', '>=', previousRange.start],
+        ['date', '<=', previousRange.end]
+      ];
+      return odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+        prevPayDomain,
+        ['amount:sum'],
+        ['payment_type']
+      ]).catch(() => []);
+    })() : Promise.resolve([])
   ]);
 
-  // Combine and deduplicate credit notes
-  const allRefundMovesMap = new Map();
-  (periodRefunds || []).forEach(r => allRefundMovesMap.set(r.id, r));
-  (linkedRefunds || []).forEach(r => allRefundMovesMap.set(r.id, r));
-  (invoiceMoves || []).forEach(m => {
-    if (m.move_type === 'out_refund') allRefundMovesMap.set(m.id, m);
+  // 2. Parallel Batch 2: Fetch order lines & linked posted invoice residuals
+  const orders = rawOrders || [];
+  const orderIds = orders.map(o => o.id);
+  const orderRepInfo = new Map(orders.map(order => {
+    const customRep = soFields?.rep?.name ? fieldValue(order[soFields.rep.name]) : null;
+    const id = customRep?.key ?? null;
+    const name = customRep?.name || 'غير محدد';
+    return [order.id, { id, name }];
+  }));
+  const confirmedOrderInvoiceIds = [...new Set(
+    orders
+      .filter(o => o.state === 'sale' || o.state === 'done')
+      .flatMap(o => o.invoice_ids || [])
+  )];
+
+  const [rawOrderLines, rawInvoiceMoves] = await Promise.all([
+    orderIds.length > 0 ? odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [
+      [['order_id', 'in', orderIds.slice(0, 1500)], ['display_type', '=', false]]
+    ], { fields: ['id', 'order_id', 'product_id', 'product_uom_qty', 'price_subtotal'], limit: 10000 }).catch(() => []) : [],
+    confirmedOrderInvoiceIds.length > 0 ? odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
+      [['id', 'in', confirmedOrderInvoiceIds.slice(0, 1500)], ['state', '=', 'posted'], ['move_type', '=', 'out_invoice']]
+    ], { fields: ['id', 'amount_total', 'amount_residual', 'state', 'move_type'], limit: 1500 }).catch(() => []) : []
+  ]);
+  const orderLineIds = (rawOrderLines || []).map(line => line.id);
+  const orderIdByLineId = new Map((rawOrderLines || []).map(line => [line.id, line.order_id?.[0]]));
+  const [rawRefundLines, reversedRefundMoves] = await Promise.all([
+    (!isDraftStatus && orderLineIds.length > 0) ? odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [[
+      ['sale_line_ids', 'in', orderLineIds.slice(0, 10000)],
+      ['move_id.state', '=', 'posted'],
+      ['move_id.move_type', '=', 'out_refund'],
+      ['display_type', '=', 'product'],
+      ...(productId ? [['product_id', '=', productId]] : []),
+      ...(categoryId ? [['product_id.categ_id', 'child_of', categoryId]] : [])
+    ]], { fields: ['id', 'move_id', 'sale_line_ids', 'product_id', 'quantity', 'price_subtotal', 'date', 'partner_id'], limit: 20000 }).catch(err => {
+      console.warn('[SO] linked credit note lines query failed:', err.message);
+      return [];
+    }) : [],
+    (!isDraftStatus && confirmedOrderInvoiceIds.length > 0) ? odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[
+      ['reversed_entry_id', 'in', confirmedOrderInvoiceIds.slice(0, 1500)],
+      ['state', '=', 'posted'],
+      ['move_type', '=', 'out_refund'],
+      ...(productId ? [['invoice_line_ids.product_id', '=', productId]] : []),
+      ...(categoryId ? [['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]] : [])
+    ]], { fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'reversed_entry_id', 'move_type', 'amount_total_signed', 'amount_total', 'invoice_date', 'date', 'ref'], limit: 5000, order: 'invoice_date desc, id desc' }).catch(() => []) : []
+  ]);
+  const refundMoveIds = [...new Set([
+    ...(rawRefundLines || []).map(line => line.move_id?.[0]),
+    ...(reversedRefundMoves || []).map(refund => refund.id)
+  ].filter(Boolean))];
+  const rawRefundMoves = refundMoveIds.length > 0 ? await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[
+    ['id', 'in', refundMoveIds.slice(0, 5000)],
+    ['state', '=', 'posted'],
+    ['move_type', '=', 'out_refund']
+  ]], { fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'reversed_entry_id', 'move_type', 'amount_total_signed', 'amount_total', 'invoice_date', 'date', 'ref'], limit: 5000, order: 'invoice_date desc, id desc' }).catch(() => []) : [];
+
+  const relatedOrdersByMoveId = new Map();
+  const orderById = new Map(orders.map(order => [order.id, order]));
+  orders.forEach(order => (order.invoice_ids || []).forEach(moveId => {
+    const linkedOrders = relatedOrdersByMoveId.get(moveId) || [];
+    linkedOrders.push(order);
+    relatedOrdersByMoveId.set(moveId, linkedOrders);
+  }));
+  const addRelatedOrder = (moveId, orderId) => {
+    const order = orderById.get(orderId);
+    if (!moveId || !order) return;
+    const linkedOrders = relatedOrdersByMoveId.get(moveId) || [];
+    if (!linkedOrders.some(candidate => candidate.id === orderId)) linkedOrders.push(order);
+    relatedOrdersByMoveId.set(moveId, linkedOrders);
+  };
+  (rawRefundMoves || []).forEach(refund => {
+    const reversedInvoiceId = refund.reversed_entry_id?.[0];
+    (relatedOrdersByMoveId.get(reversedInvoiceId) || []).forEach(order => addRelatedOrder(refund.id, order.id));
   });
-  const allRefundMoves = [...allRefundMovesMap.values()];
-  const refundMoveIds = allRefundMoves.map(r => r.id);
+  (rawRefundLines || []).forEach(line => {
+    (line.sale_line_ids || []).forEach(lineId => addRelatedOrder(line.move_id?.[0], orderIdByLineId.get(lineId)));
+  });
 
-  // Fetch product return lines
-  let refundLines = [];
-  if (refundMoveIds.length > 0) {
-    const refundLineDomain = [
-      ['move_id', 'in', refundMoveIds],
-      ['display_type', '=', 'product']
-    ];
-    if (productId) refundLineDomain.push(['product_id', '=', productId]);
-    if (categoryId) refundLineDomain.push(['product_id.categ_id', 'child_of', categoryId]);
+  // Map of posted invoice balances
+  const invoiceMap = new Map();
+  (rawInvoiceMoves || []).forEach(inv => {
+    const invTotal = Math.abs(Number(inv.amount_total) || 0);
+    const invResidual = Math.abs(Number(inv.amount_residual) || 0);
+    invoiceMap.set(inv.id, {
+      id: inv.id,
+      total: invTotal,
+      residual: invResidual,
+      paid: Math.max(0, invTotal - invResidual)
+    });
+  });
 
-    refundLines = await odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [refundLineDomain], {
-      fields: ['id', 'move_id', 'product_id', 'quantity', 'price_subtotal', 'date', 'partner_id'],
-      limit: 50000
-    }).catch(() => []);
-  }
-
-  // Calculate return metrics
-  let totalReturnsAmount = 0;
-  let totalReturnedQty = 0;
-  let totalReturnsCount = 0;
-
-  if (productId || categoryId) {
-    totalReturnsAmount = refundLines.reduce((sum, l) => sum + (l.price_subtotal || 0), 0);
-    totalReturnedQty = refundLines.reduce((sum, l) => sum + (l.quantity || 0), 0);
-    totalReturnsCount = new Set(refundLines.map(l => l.move_id?.[0])).size;
-  } else {
-    totalReturnsAmount = allRefundMoves.reduce((sum, r) => sum + extractMoveAmount(r), 0);
-    totalReturnedQty = refundLines.reduce((sum, l) => sum + (l.quantity || 0), 0);
-    totalReturnsCount = allRefundMoves.length;
-  }
-
-  const gross = orders.reduce((sum, order) => sum + (order.amount_total || 0), 0);
-  const net = Math.max(0, gross - totalReturnsAmount);
-  const invoiceCollected = (invoiceMoves || []).reduce((sum, move) => sum + (move.move_type === 'out_invoice' ? 1 : -1) * (extractMoveAmount(move) - extractMoveResidual(move)), 0);
-  const collected = Math.min(net, Math.max(0, invoiceCollected));
-  const outstanding = Math.max(0, net - collected);
+  // Calculate product lines
   const byProduct = new Map();
-  filteredLines.forEach(line => {
+  (rawOrderLines || []).forEach(line => {
     if (!line.product_id) return;
-    const value = byProduct.get(line.product_id[0]) || { id: line.product_id[0], name: line.product_id[1], amount: 0, quantity: 0, count: 0 };
-    value.amount += line.price_subtotal || 0; value.quantity += line.product_uom_qty || 0; value.count += 1; byProduct.set(value.id, value);
+    const val = byProduct.get(line.product_id[0]) || { id: line.product_id[0], name: line.product_id[1], amount: 0, quantity: 0, count: 0 };
+    val.amount += line.price_subtotal || 0;
+    val.quantity += line.product_uom_qty || 0;
+    val.count += 1;
+    byProduct.set(val.id, val);
   });
   const products = [...byProduct.values()].map(p => ({ ...p, amount: round2(p.amount), quantity: round2(p.quantity) }));
 
-  // Map quantities per partner from filtered lines and return lines
+  // Map order lines amounts per order
+  const orderLineAmountMap = new Map();
   const orderPartnerMap = new Map(orders.map(o => [o.id, o.partner_id?.[0]]));
   const partnerQtyMap = new Map();
-  filteredLines.forEach(line => {
-    const pid = orderPartnerMap.get(line.order_id?.[0]);
-    if (!pid) return;
-    const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
-    entry.grossQty += (line.product_uom_qty || 0);
-    entry.netQty += (line.product_uom_qty || 0);
-    partnerQtyMap.set(pid, entry);
-  });
-  refundLines.forEach(line => {
-    const pid = line.partner_id ? line.partner_id[0] : null;
-    if (!pid) return;
-    const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
-    entry.returnedQty += (line.quantity || 0);
-    entry.netQty = Math.max(0, entry.grossQty - entry.returnedQty);
-    partnerQtyMap.set(pid, entry);
+
+  (rawOrderLines || []).forEach(line => {
+    const oid = line.order_id?.[0];
+    if (oid) {
+      orderLineAmountMap.set(oid, (orderLineAmountMap.get(oid) || 0) + (line.price_subtotal || 0));
+    }
+    const pid = orderPartnerMap.get(oid);
+    if (pid) {
+      const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
+      entry.grossQty += (line.product_uom_qty || 0);
+      entry.netQty += (line.product_uom_qty || 0);
+      partnerQtyMap.set(pid, entry);
+    }
   });
 
-  const regional = new Map(); const reps = new Map(); const customers = new Map();
+  (rawRefundLines || []).forEach(line => {
+    const pid = line.partner_id ? line.partner_id[0] : null;
+    if (pid) {
+      const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
+      entry.returnedQty += Math.abs(Number(line.quantity) || 0);
+      entry.netQty = Math.max(0, entry.grossQty - entry.returnedQty);
+      partnerQtyMap.set(pid, entry);
+    }
+  });
+
+  const isProductFilter = Boolean(productId || categoryId);
+  const getOrderAmount = (order) => {
+    if (isProductFilter) return orderLineAmountMap.get(order.id) || 0;
+    return Number(order.amount_total) || 0;
+  };
+
+  // Payments aggregation
+  let totalInboundPaymentAmt = 0;
+  let totalOutboundPaymentAmt = 0;
+  (rawPayments || []).forEach(p => {
+    const amt = Math.abs(Number(p.amount) || 0);
+    if (p.payment_type === 'outbound') {
+      totalOutboundPaymentAmt += amt;
+    } else {
+      totalInboundPaymentAmt += amt;
+    }
+  });
+  const collected = Math.max(0, round2(totalInboundPaymentAmt - totalOutboundPaymentAmt));
+
+  const partnerPaymentMap = new Map();
+  (rawCustomerPayments || []).forEach(p => {
+    const pid = p.partner_id ? p.partner_id[0] : null;
+    if (!pid) return;
+    const amt = Math.abs(Number(p.amount) || 0);
+    if (p.payment_type === 'outbound') {
+      partnerPaymentMap.set(pid, (partnerPaymentMap.get(pid) || 0) - amt);
+    } else {
+      partnerPaymentMap.set(pid, (partnerPaymentMap.get(pid) || 0) + amt);
+    }
+  });
+
+  // Compute order-level exact invoice-based paid & residual
+  const orderPaymentMap = new Map();
+  const customerOrderPaidMap = new Map();
+  const customerOrderResidualMap = new Map();
+
   orders.forEach(order => {
-    const partner = partners.get(order.partner_id?.[0]) || { state: 'غير محدد', city: 'غير محدد', name: order.partner_id?.[1] || 'غير محدد' };
-    const pQty = partnerQtyMap.get(order.partner_id?.[0]) || { grossQty: 0, returnedQty: 0, netQty: 0 };
-    const region = regional.get(partner.state) || { name: partner.state, sales: 0, collected: 0, outstanding: 0, invoices: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
-    region.sales += order.amount_total || 0; region.invoices += 1; regional.set(region.name, region);
-    const rep = reps.get(order.user_id?.[0]) || { id: order.user_id?.[0], name: order.user_id?.[1] || 'غير محدد', achieved: 0, collected: 0, remaining: 0, count: 0, target: 0 };
-    rep.achieved += order.amount_total || 0; rep.count += 1; reps.set(rep.id, rep);
-    const customer = customers.get(order.partner_id?.[0]) || {
-      id: order.partner_id?.[0],
-      name: partner.name,
-      state: partner.state,
-      city: partner.city,
-      rep: order.user_id?.[1] || 'غير محدد',
+    const isDraft = order.state === 'draft' || order.state === 'sent';
+    const orderTotal = round2(getOrderAmount(order));
+    const pid = order.partner_id?.[0];
+
+    if (isDraft) {
+      orderPaymentMap.set(order.id, { paid: 0, residual: orderTotal });
+      if (pid) {
+        customerOrderResidualMap.set(pid, (customerOrderResidualMap.get(pid) || 0) + orderTotal);
+      }
+      return;
+    }
+
+    const linkedInvoices = (order.invoice_ids || []).map(id => invoiceMap.get(id)).filter(Boolean);
+    if (linkedInvoices.length === 0) {
+      orderPaymentMap.set(order.id, { paid: 0, residual: orderTotal });
+      if (pid) {
+        customerOrderResidualMap.set(pid, (customerOrderResidualMap.get(pid) || 0) + orderTotal);
+      }
+    } else {
+      const invTotal = linkedInvoices.reduce((sum, inv) => sum + inv.total, 0);
+      const invResidual = linkedInvoices.reduce((sum, inv) => sum + inv.residual, 0);
+      const invPaid = Math.max(0, invTotal - invResidual);
+      const uninvoicedPortion = Math.max(0, orderTotal - invTotal);
+
+      const paid = round2(Math.min(orderTotal, invPaid));
+      const residual = round2(Math.max(0, invResidual + uninvoicedPortion));
+
+      orderPaymentMap.set(order.id, { paid, residual });
+      if (pid) {
+        customerOrderPaidMap.set(pid, (customerOrderPaidMap.get(pid) || 0) + paid);
+        customerOrderResidualMap.set(pid, (customerOrderResidualMap.get(pid) || 0) + residual);
+      }
+    }
+  });
+
+  // Calculate return totals
+  const totalReturnsAmount = isDraftStatus ? 0 : round2((rawRefundMoves || []).reduce((sum, r) => sum + extractMoveAmount(r), 0));
+  const totalReturnsCount = isDraftStatus ? 0 : (rawRefundMoves || []).length;
+  const totalReturnedQty = isDraftStatus ? 0 : round2((rawRefundLines || []).reduce((sum, l) => sum + Math.abs(Number(l.quantity) || 0), 0));
+
+  const gross = round2(orders.reduce((sum, o) => sum + getOrderAmount(o), 0));
+  const net = Math.max(0, round2(gross - totalReturnsAmount));
+  const outstanding = isDraftStatus
+    ? gross
+    : round2(orders.reduce((sum, o) => sum + (orderPaymentMap.get(o.id)?.residual ?? getOrderAmount(o)), 0));
+
+  // Regional & Reps & Customers Aggregation
+  const regional = new Map();
+  const reps = new Map();
+  const customers = new Map();
+
+  orders.forEach(order => {
+    const pid = order.partner_id?.[0];
+    const partner = partners.get(pid) || { state: 'غير محدد', city: 'غير محدد', name: order.partner_id?.[1] || 'غير محدد', rep: 'غير محدد' };
+    const pQty = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
+    const orderAmt = getOrderAmount(order);
+
+    // Custom Odoo grouping fields if present
+    const customRegVal = soFields?.region?.name ? fieldValue(order[soFields.region.name]) : null;
+    const customRepVal = soFields?.rep?.name ? fieldValue(order[soFields.rep.name]) : null;
+
+    const geoKey = (customRegVal && customRegVal.name !== 'غير محدد')
+      ? customRegVal.name
+      : ((partner.city && partner.city !== 'غير محدد') ? partner.city : ((partner.state && partner.state !== 'غير محدد' && partner.state !== 'أخرى / غير محدد') ? partner.state : 'أخرى'));
+    const stateName = partner.state || geoKey;
+    const cityName = partner.city || geoKey;
+
+    const repName = customRepVal?.name || 'غير محدد';
+    const repId = customRepVal?.key ?? null;
+    const repKey = normalizeArabicLabel(repName) || 'unassigned';
+
+    // Regional map
+    const reg = regional.get(geoKey) || {
+      name: geoKey,
+      state: stateName,
+      city: cityName,
+      sales: 0,
+      gross: 0,
+      returns: 0,
+      collected: 0,
+      outstanding: 0,
+      invoices: 0,
+      grossQty: 0,
+      returnedQty: 0,
+      netQty: 0
+    };
+    reg.sales += orderAmt;
+    reg.gross += orderAmt;
+    reg.invoices += 1;
+    regional.set(geoKey, reg);
+
+    // Reps map
+    const rep = reps.get(repKey) || { id: repId, name: repName, achieved: 0, gross: 0, returns: 0, returnsCount: 0, collected: 0, remaining: 0, count: 0, target: 0 };
+    if (!rep.id && repId) rep.id = repId;
+    rep.gross += orderAmt;
+    rep.achieved += orderAmt;
+    rep.count += 1;
+    reps.set(repKey, rep);
+
+    // Customers map
+    const cust = customers.get(pid) || {
+      id: pid,
+      name: partner.name || order.partner_id?.[1] || 'غير محدد',
+      state: stateName,
+      city: cityName,
+      geoKey,
+      rep: repName,
+      repId: repKey,
       sales: 0,
       collected: 0,
       outstanding: 0,
@@ -1015,334 +2057,207 @@ async function buildSalesOrderOverview(auth, query) {
       returnedQty: round2(pQty.returnedQty),
       netQty: round2(Math.max(0, pQty.grossQty - pQty.returnedQty))
     };
-    customer.sales += order.amount_total || 0; customer.invoices += 1; customers.set(customer.id, customer);
+    cust.sales += orderAmt;
+    cust.invoices += 1;
+    customers.set(pid, cust);
   });
+
+  (rawRefundMoves || []).forEach(refund => {
+    const linkedOrders = relatedOrdersByMoveId.get(refund.id) || [];
+    if (!linkedOrders.length) return;
+
+    const totalWeight = linkedOrders.reduce((sum, order) => sum + Math.max(0, getOrderAmount(order)), 0);
+    const refundAmount = extractMoveAmount(refund);
+    let allocatedAmount = 0;
+    const repAllocations = new Map();
+
+    linkedOrders.forEach((order, index) => {
+      const orderWeight = Math.max(0, getOrderAmount(order));
+      const allocation = index === linkedOrders.length - 1
+        ? round2(refundAmount - allocatedAmount)
+        : round2(totalWeight > 0 ? refundAmount * orderWeight / totalWeight : refundAmount / linkedOrders.length);
+      allocatedAmount += allocation;
+      const repInfo = orderRepInfo.get(order.id);
+      if (!repInfo) return;
+      const repKey = normalizeArabicLabel(repInfo.name) || 'unassigned';
+      const repAllocation = repAllocations.get(repKey) || { amount: 0, name: repInfo.name };
+      repAllocation.amount += allocation;
+      repAllocations.set(repKey, repAllocation);
+    });
+
+    repAllocations.forEach((allocation, repKey) => {
+      const rep = reps.get(repKey);
+      if (!rep) return;
+      rep.returns += allocation.amount;
+      rep.returnsCount += 1;
+    });
+  });
+
+  // Calculate customer collected & outstanding
+  const customerRows = [...customers.values()].map(c => {
+    const sales = round2(c.sales);
+    const custPaid = isDraftStatus ? 0 : round2(customerOrderPaidMap.get(c.id) || 0);
+    const custResidual = isDraftStatus ? sales : round2(customerOrderResidualMap.get(c.id) ?? Math.max(0, sales - custPaid));
+    const rate = sales > 0 ? Number((custPaid / sales * 100).toFixed(1)) : 0;
+    return {
+      ...c,
+      sales,
+      collected: custPaid,
+      outstanding: custResidual,
+      rate
+    };
+  });
+
+  // Regional aggregated numbers
+  const regionalDataMap = new Map();
+  customerRows.forEach(c => {
+    const geoKey = c.geoKey || c.city || c.state || 'أخرى';
+    const entry = regionalDataMap.get(geoKey) || { collected: 0, outstanding: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
+    entry.collected += c.collected;
+    entry.outstanding += c.outstanding;
+    entry.grossQty += c.grossQty;
+    entry.returnedQty += c.returnedQty;
+    entry.netQty += c.netQty;
+    regionalDataMap.set(geoKey, entry);
+  });
+
   const regions = [...regional.values()].map(r => {
-    const matchingCusts = [...customers.values()].filter(c => c.state === r.name);
-    const grossQty = round2(matchingCusts.reduce((sum, c) => sum + (c.grossQty || 0), 0));
-    const returnedQty = round2(matchingCusts.reduce((sum, c) => sum + (c.returnedQty || 0), 0));
-    const netQty = round2(Math.max(0, grossQty - returnedQty));
+    const regData = regionalDataMap.get(r.name) || { collected: 0, outstanding: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
+    const rSales = round2(r.sales);
+    const rCollected = round2(regData.collected);
+    const rOutstanding = round2(regData.outstanding);
     return {
       ...r,
-      grossQty,
-      returnedQty,
-      netQty,
-      collected: round2(r.sales * (gross ? collected / gross : 0)),
-      outstanding: round2(r.sales * (gross ? outstanding / gross : 0)),
-      sales: round2(r.sales),
-      rate: gross ? Number((collected / gross * 100).toFixed(1)) : 0
+      sales: rSales,
+      gross: rSales,
+      grossQty: round2(regData.grossQty),
+      returnedQty: round2(regData.returnedQty),
+      netQty: round2(regData.netQty),
+      collected: rCollected,
+      outstanding: rOutstanding,
+      rate: rSales > 0 ? Number((rCollected / rSales * 100).toFixed(1)) : 0
     };
   }).sort((a, b) => b.sales - a.sales);
-  const repsList = [...reps.values()].map(rep => ({ ...rep, achieved: round2(rep.achieved), collected: null, remaining: null, target: null, percentage: null, theoreticalPercentage: null, theoreticalGap: null, actualGap: null, kpi: 'غير متاح: لا يوجد مصدر هدف معتمد' }));
-  const customerRows = [...customers.values()].map(c => ({ ...c, sales: round2(c.sales), collected: null, outstanding: null, rate: null }));
-  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-  const monthlyGross = new Array(12).fill(0);
-  orders.forEach(o => { const month = new Date(o.date_order).getUTCMonth(); if (month >= 0) monthlyGross[month] += o.amount_total || 0; });
-  const monthlyReturns = new Array(12).fill(0);
-  allRefundMoves.forEach(r => {
-    if (r.invoice_date) {
-      const month = new Date(r.invoice_date).getUTCMonth();
-      if (month >= 0 && month < 12) monthlyReturns[month] += r.amount_total || 0;
-    }
-  });
-  const monthlyNet = monthlyGross.map((g, i) => Math.max(0, g - monthlyReturns[i]));
 
-  // Build returnsList for the UI returns table
-  let returnsList = [];
-  if (refundLines.length > 0) {
-    returnsList = refundLines.slice(0, 50).map((line, i) => {
-      const pId = line.partner_id ? line.partner_id[0] : null;
-      const pInfo = pId ? partners.get(pId) : null;
-      const prod = productCatalog ? productCatalog.find(p => p.id === (line.product_id ? line.product_id[0] : null)) : null;
-      const moveId = line.move_id ? line.move_id[0] : null;
-      const refundMove = moveId ? allRefundMovesMap.get(moveId) : null;
-      return {
-        id: line.id,
-        moveId,
-        creditNote: line.move_id ? line.move_id[1] : `CN-${String(i + 1).padStart(4, '0')}`,
-        product: line.product_id ? line.product_id[1] : 'غير محدد',
-        category: prod?.categoryName || 'غير محدد',
-        customer: line.partner_id ? line.partner_id[1] : 'غير محدد',
-        rep: refundMove?.invoice_user_id ? refundMove.invoice_user_id[1] : 'غير محدد',
-        region: pInfo ? pInfo.state : 'غير محدد',
-        date: line.date,
-        returnedQty: round2(line.quantity || 0),
-        returns: round2(line.price_subtotal || 0),
-        odooLink: moveId ? `${ODOO_URL}/web#id=${moveId}&model=account.move&view_type=form` : `${ODOO_URL}/web#model=account.move&view_type=list`
-      };
-    });
-  } else if (allRefundMoves.length > 0) {
-    returnsList = allRefundMoves.slice(0, 25).map((r, i) => {
-      const pId = r.partner_id ? r.partner_id[0] : null;
-      const pInfo = pId ? partners.get(pId) : null;
-      return {
-        id: r.id,
-        moveId: r.id,
-        creditNote: r.name || `CN-${String(i + 1).padStart(4, '0')}`,
-        product: r.ref || 'مرتجع أمر بيع',
-        category: 'غير محدد',
-        customer: r.partner_id ? r.partner_id[1] : 'غير محدد',
-        rep: r.invoice_user_id ? r.invoice_user_id[1] : 'غير محدد',
-        region: pInfo ? pInfo.state : 'غير محدد',
-        date: r.invoice_date,
-        returnedQty: 0,
-        returns: round2(r.amount_total || 0),
-        odooLink: `${ODOO_URL}/web#id=${r.id}&model=account.move&view_type=form`
-      };
-    });
-  }
-
-  const dateFacets = await getDateFacets(auth, 'salesOrder');
   const soGrossQty = round2(regions.reduce((sum, r) => sum + (r.grossQty || 0), 0));
   const soReturnedQty = round2(regions.reduce((sum, r) => sum + (r.returnedQty || 0), 0));
   const soNetQty = round2(Math.max(0, soGrossQty - soReturnedQty));
 
-  // Calculate comparison metrics for Sales Orders
-  const previousRange = comparisonRange(start, end, query.comparison || 'previousPeriod');
-  let comparison = null;
-  let growthAnalysis = {
-    regions: regions.map(r => ({
-      name: r.name,
-      currentSales: r.sales,
-      previousSales: 0,
-      growthAmount: r.sales,
-      growthPercent: 0
-    })),
-    customers: [...customers.values()].map(c => ({
-      id: c.id,
-      name: c.name,
-      state: c.state,
-      city: c.city,
-      rep: c.rep,
-      currentSales: c.sales,
-      previousSales: 0,
-      growthAmount: c.sales,
-      growthPercent: 0
-    })),
-    churnWarnings: [],
-    previousRange
+  // Reps Performance
+  const repDataMap = new Map();
+  customerRows.forEach(c => {
+    const entryId = (c.repId !== null && c.repId !== undefined) ? repDataMap.get(c.repId) : null;
+    const entryName = c.rep ? repDataMap.get(c.rep) : null;
+    const entry = entryId || entryName || { collected: 0, remaining: 0 };
+    entry.collected += c.collected;
+    entry.remaining += c.outstanding;
+    if (c.repId) repDataMap.set(c.repId, entry);
+    if (c.rep) repDataMap.set(c.rep, entry);
+  });
+
+  const totalCompanySoAmt = Number(net) || [...reps.values()].reduce((sum, r) => sum + r.achieved, 0);
+
+  const repsList = [...reps.values()].map(rep => {
+    const achieved = Math.max(0, round2(rep.gross - rep.returns));
+    const rData = (rep.id ? repDataMap.get(rep.id) : null) || (rep.name ? repDataMap.get(rep.name) : null) || { collected: 0, remaining: 0 };
+    const repCollected = round2(rData.collected);
+    const repRemaining = round2(rData.remaining);
+
+    const targetFromOdoo = rep.id ? odooTargetMap?.get(rep.id) : null;
+    const hasTarget = Boolean(targetFromOdoo && Number(targetFromOdoo) > 0);
+    const target = hasTarget ? round2(targetFromOdoo) : null;
+    const targetPercentage = hasTarget ? Number((achieved / target * 100).toFixed(1)) : null;
+
+    const contributionRate = totalCompanySoAmt > 0 ? Number((Math.max(0, achieved) / totalCompanySoAmt * 100).toFixed(1)) : 0;
+    const percentage = hasTarget ? targetPercentage : contributionRate;
+
+    const kpi = hasTarget
+      ? (targetPercentage >= 100 ? 'متفوق' : targetPercentage >= 80 ? 'محقق للهدف' : (achieved > 0 ? 'يحتاج متابعة' : 'لا توجد مبيعات'))
+      : (achieved > 0 ? 'أوامر مسجلة' : 'بدون مبيعات');
+
+    const repCustomers = customerRows.filter(c => c.repId === rep.id || c.rep === rep.name).sort((a, b) => b.sales - a.sales);
+
+    return {
+      ...rep,
+      achieved,
+      gross: round2(rep.gross),
+      returns: round2(rep.returns),
+      collected: repCollected,
+      remaining: repRemaining,
+      target,
+      hasTarget,
+      percentage,
+      contributionRate,
+      theoreticalPercentage: null,
+      theoreticalGap: null,
+      actualGap: hasTarget ? Number((targetPercentage - 100).toFixed(1)) : null,
+      count: rep.count || 0,
+      kpi,
+      customers: repCustomers
+    };
+  }).sort((a, b) => b.achieved - a.achieved);
+
+  // Recent Returns / Credit notes list
+  const returnsList = (rawRefundMoves || []).slice(0, 30).map((r, i) => {
+    const pInfo = r.partner_id ? partners.get(r.partner_id[0]) : null;
+    const moveLines = (rawRefundLines || []).filter(l => l.move_id?.[0] === r.id);
+    const mainProduct = moveLines[0]?.product_id?.[1] || r.ref || 'مرتجع أمر بيع';
+    const totalQty = moveLines.reduce((s, l) => s + Math.abs(Number(l.quantity) || 0), 0);
+    return {
+      id: r.id,
+      moveId: r.id,
+      creditNote: r.name || `CN-${String(i + 1).padStart(4, '0')}`,
+      product: mainProduct,
+      category: 'غير محدد',
+      customer: r.partner_id ? r.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
+      rep: [...new Set((relatedOrdersByMoveId.get(r.id) || []).map(order => orderRepInfo.get(order.id)?.name).filter(Boolean))].join('، ') || 'غير محدد',
+      region: pInfo ? pInfo.state : 'غير محدد',
+      date: r.invoice_date || r.date,
+      returnedQty: round2(totalQty),
+      returns: round2(extractMoveAmount(r)),
+      odooLink: `${ODOO_URL}/web#id=${r.id}&model=account.move&view_type=form`
+    };
+  });
+
+  // Monthly 12-month series
+  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const parseMonthIndex = (val) => {
+    if (!val) return -1;
+    const str = String(val).toLowerCase().trim();
+    const numMatch = str.match(/(?:^|[-/ ])(0?[1-9]|1[0-2])(?:[-/ ]|$)/);
+    if (numMatch) return Number(numMatch[1]) - 1;
+    const arIdx = months.findIndex(m => str.includes(m));
+    if (arIdx >= 0) return arIdx;
+    const enIdx = englishMonths.findIndex(m => str.includes(m));
+    if (enIdx >= 0) return enIdx;
+    return -1;
   };
 
-  if (previousRange) {
-    const prevOrderDomain = [
-      ['date_order', '>=', `${previousRange.start} 00:00:00`],
-      ['date_order', '<=', `${previousRange.end} 23:59:59`]
-    ];
-    if (status === 'post') prevOrderDomain.push(['state', 'in', ['sale', 'done']]);
-    else if (status === 'draft') prevOrderDomain.push(['state', '=', 'draft']);
-    else prevOrderDomain.push(['state', 'in', ['draft', 'sale', 'done']]);
-
-    if (repId) prevOrderDomain.push(['user_id', '=', repId]);
-    if (customerId) {
-      prevOrderDomain.push(['partner_id', '=', customerId]);
-    } else if (query.region || query.city) {
-      const allowedPartnerIds = [...partners.values()]
-        .filter(p => !query.region || p.state === query.region)
-        .filter(p => !query.city || p.city === query.city)
-        .map(p => p.id);
-      if (allowedPartnerIds.length) {
-        prevOrderDomain.push(['partner_id', 'in', allowedPartnerIds]);
-      } else {
-        prevOrderDomain.push(['id', '=', 0]);
-      }
-    }
-
-    let prevGross = 0;
-    let prevCount = 0;
-    let prevReturnsAmount = 0;
-    let prevReturnsCount = 0;
-    try {
-      const prevRefundDomain = [
-        ['state', '=', 'posted'],
-        ['move_type', '=', 'out_refund'],
-        ['invoice_date', '>=', previousRange.start],
-        ['invoice_date', '<=', previousRange.end]
-      ];
-      if (repId) prevRefundDomain.push(['invoice_user_id', '=', repId]);
-      if (customerId) prevRefundDomain.push(['partner_id', '=', customerId]);
-      else if (query.region || query.city) {
-        const allowedPartnerIds = [...partners.values()]
-          .filter(p => !query.region || p.state === query.region)
-          .filter(p => !query.city || p.city === query.city)
-          .map(p => p.id);
-        if (allowedPartnerIds.length) prevRefundDomain.push(['partner_id', 'in', allowedPartnerIds]);
-      }
-
-      const [prevOrdersSummary, prevRefundSummary] = await Promise.all([
-        odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
-          prevOrderDomain,
-          ['amount_total:sum'],
-          []
-        ]),
-        odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-          prevRefundDomain,
-          ['amount_total:sum'],
-          []
-        ]).catch(() => [])
-      ]);
-      prevGross = prevOrdersSummary[0]?.amount_total || 0;
-      prevCount = prevOrdersSummary[0]?.__count || 0;
-      prevReturnsAmount = prevRefundSummary[0]?.amount_total || 0;
-      prevReturnsCount = prevRefundSummary[0]?.__count || 0;
-    } catch (e) {
-      console.warn('Could not fetch previous sales order summary:', e.message);
-    }
-
-    const prevNet = Math.max(0, prevGross - prevReturnsAmount);
-    const prevAvg = prevCount ? round2(prevNet / prevCount) : 0;
-    const currentQtyRatio = gross > 0 ? (soGrossQty / gross) : 0;
-    const estimatedPrevGrossQty = round2(prevGross * currentQtyRatio);
-    const estimatedPrevReturnsQty = round2(estimatedPrevGrossQty * (soGrossQty ? soReturnedQty / soGrossQty : 0));
-    const estimatedPrevNetQty = Math.max(0, round2(estimatedPrevGrossQty - estimatedPrevReturnsQty));
-
-    comparison = {
-      mode: query.comparison || 'previousPeriod',
-      start: previousRange.start,
-      end: previousRange.end,
-      kpis: {
-        gross: round2(prevGross),
-        returns: round2(prevReturnsAmount),
-        net: round2(prevNet),
-        grossQty: estimatedPrevGrossQty,
-        returnsQty: estimatedPrevReturnsQty,
-        netQty: estimatedPrevNetQty,
-        collected: round2(prevNet * (net ? collected / net : 1)),
-        outstanding: Math.max(0, round2(prevNet - (prevNet * (net ? collected / net : 1)))),
-        invoicesCount: prevCount,
-        returnsCount: prevReturnsCount,
-        avgInvoice: prevAvg
-      }
-    };
-
-    try {
-      const prevPartnerGroups = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
-        prevOrderDomain,
-        ['amount_total:sum'],
-        ['partner_id']
-      ]);
-      const prevPartnerSales = new Map();
-      const prevRegionSales = new Map();
-      (prevPartnerGroups || []).forEach(g => {
-        const pid = g.partner_id?.[0];
-        const val = g.amount_total || 0;
-        if (pid) {
-          prevPartnerSales.set(pid, (prevPartnerSales.get(pid) || 0) + val);
-          const pState = partners.get(pid)?.state || 'غير محدد';
-          prevRegionSales.set(pState, (prevRegionSales.get(pState) || 0) + val);
-        }
-      });
-
-      growthAnalysis.regions = regions.map(r => {
-        const pSales = round2(prevRegionSales.get(r.name) || 0);
-        return {
-          name: r.name,
-          currentSales: r.sales,
-          previousSales: pSales,
-          growthAmount: round2(r.sales - pSales),
-          growthPercent: percentChange(r.sales, pSales)
-        };
-      });
-
-      growthAnalysis.customers = [...customers.values()].map(c => {
-        const pSales = round2(prevPartnerSales.get(c.id) || 0);
-        const growthAmount = round2(c.sales - pSales);
-        const growthPercent = percentChange(c.sales, pSales);
-        const lossAmount = Math.max(0, round2(pSales - c.sales));
-        return {
-          id: c.id,
-          name: c.name,
-          state: c.state,
-          city: c.city,
-          rep: c.rep,
-          currentSales: c.sales,
-          previousSales: pSales,
-          growthAmount,
-          growthPercent,
-          lossAmount
-        };
-      });
-
-      const soChurnWarnings = growthAnalysis.customers
-        .filter(c => c.previousSales >= 25000 && c.growthPercent <= -30)
-        .sort((a, b) => b.lossAmount - a.lossAmount || a.growthPercent - b.growthPercent)
-        .map(c => ({ ...c, risk: c.growthPercent <= -50 ? 'مرتفع' : 'متوسط' }));
-
-      const soTopDeclining = growthAnalysis.customers
-        .filter(c => c.growthAmount < 0)
-        .sort((a, b) => b.lossAmount - a.lossAmount)
-        .slice(0, 15);
-
-      const soTopGrowing = growthAnalysis.customers
-        .filter(c => c.growthAmount > 0)
-        .sort((a, b) => b.growthAmount - a.growthAmount)
-        .slice(0, 15);
-
-      growthAnalysis.churnWarnings = soChurnWarnings.slice(0, 50);
-      growthAnalysis.customerGrowthChart = {
-        churn: {
-          labels: soChurnWarnings.slice(0, 15).map(c => c.name),
-          currentSales: soChurnWarnings.slice(0, 15).map(c => c.currentSales),
-          previousSales: soChurnWarnings.slice(0, 15).map(c => c.previousSales),
-          lossAmount: soChurnWarnings.slice(0, 15).map(c => c.lossAmount),
-          growthPercent: soChurnWarnings.slice(0, 15).map(c => c.growthPercent),
-          items: soChurnWarnings.slice(0, 15)
-        },
-        decline: {
-          labels: soTopDeclining.map(c => c.name),
-          currentSales: soTopDeclining.map(c => c.currentSales),
-          previousSales: soTopDeclining.map(c => c.previousSales),
-          lossAmount: soTopDeclining.map(c => c.lossAmount),
-          growthPercent: soTopDeclining.map(c => c.growthPercent),
-          items: soTopDeclining
-        },
-        growth: {
-          labels: soTopGrowing.map(c => c.name),
-          currentSales: soTopGrowing.map(c => c.currentSales),
-          previousSales: soTopGrowing.map(c => c.previousSales),
-          growthAmount: soTopGrowing.map(c => c.growthAmount),
-          growthPercent: soTopGrowing.map(c => c.growthPercent),
-          items: soTopGrowing
-        }
-      };
-    } catch (e) {
-      console.warn('Could not fetch previous partner groups for sales order:', e.message);
-    }
-  }
-
-  // Monthly growth series for Sales Orders
-  const isLastYearComp = (query.comparison || 'previousPeriod') === 'samePeriodLastYear';
-  const prevYearNum = Number(year) - 1;
+  const monthlyGross = new Array(12).fill(0);
+  const monthlyReturns = new Array(12).fill(0);
+  const monthlyNet = new Array(12).fill(0);
   const prevMonthlyGross = new Array(12).fill(0);
-  try {
-    const prevYearOrders = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'read_group', [
-      [
-        ...orderDomain.filter(item => Array.isArray(item) ? item[0] !== 'date_order' : true),
-        ['date_order', '>=', `${prevYearNum}-01-01 00:00:00`],
-        ['date_order', '<=', `${prevYearNum}-12-31 23:59:59`]
-      ],
-      ['amount_total:sum'],
-      ['date_order:month'],
-      0, 100, 'date_order:month asc'
-    ]);
-    prevYearOrders.forEach(m => {
-      const raw = m['date_order:month'] || '';
-      const name = raw.split(' ')[0]?.toLowerCase();
-      const idx = englishMonths.indexOf(name);
-      if (idx >= 0) prevMonthlyGross[idx] = m.amount_total || 0;
-    });
-  } catch (e) {
-    console.warn('Could not fetch previous year sales orders monthly series:', e.message);
-  }
+
+  (fetchedYearlyData?.curYearOrders || []).forEach(m => {
+    const idx = parseMonthIndex(m['date_order:month'] || m.date_order);
+    if (idx >= 0 && idx < 12) {
+      monthlyGross[idx] = Number(m.amount_total) || 0;
+      monthlyNet[idx] = monthlyGross[idx];
+    }
+  });
+
+  (fetchedYearlyData?.prevYearOrders || []).forEach(m => {
+    const idx = parseMonthIndex(m['date_order:month'] || m.date_order);
+    if (idx >= 0 && idx < 12) prevMonthlyGross[idx] = Number(m.amount_total) || 0;
+  });
 
   const calculatedTimeSeries = {
     month: months.map((label, index) => {
-      const currentGross = monthlyGross[index] || 0;
-      const currentRet = monthlyReturns[index] || 0;
-      const currentSales = round2(Math.max(0, currentGross - currentRet));
-      const previousSales = round2(isLastYearComp
+      const currentSales = monthlyGross[index] || 0;
+      const previousSales = isLastYearComp
         ? (prevMonthlyGross[index] || 0)
-        : (index > 0 ? (monthlyGross[index - 1] || 0) : (prevMonthlyGross[11] || 0)));
+        : (index > 0 ? (monthlyGross[index - 1] || 0) : (prevMonthlyGross[11] || 0));
       return {
         label,
         currentSales,
@@ -1351,6 +2266,128 @@ async function buildSalesOrderOverview(auth, query) {
       };
     })
   };
+
+  // Comparison & Churn Analysis
+  let comparison = null;
+  let soChurnWarnings = [];
+  let growthAnalysis = {
+    source: 'salesOrder',
+    regions: regions.map(r => ({ name: r.name, currentSales: r.sales, previousSales: 0, growthAmount: r.sales, growthPercent: 0 })),
+    customers: customerRows.map(c => ({ id: c.id, name: c.name, state: c.state, city: c.city, rep: c.rep, currentSales: c.sales, previousSales: 0, growthAmount: c.sales, growthPercent: 0, lossAmount: 0 })),
+    churnWarnings: [],
+    topDeclining: [],
+    topGrowing: [],
+    customerGrowthChart: {
+      churn: { labels: [], currentSales: [], previousSales: [], lossAmount: [], growthPercent: [], items: [] },
+      decline: { labels: [], currentSales: [], previousSales: [], lossAmount: [], growthPercent: [], items: [] },
+      growth: { labels: [], currentSales: [], previousSales: [], growthAmount: [], growthPercent: [], items: [] }
+    },
+    previousRange
+  };
+
+  if (previousRange && Array.isArray(prevOrdersData)) {
+    const prevPartnerMap = new Map();
+    let prevGrossTotal = 0;
+    let prevOrderCount = 0;
+
+    prevOrdersData.forEach(g => {
+      const pid = g.partner_id ? g.partner_id[0] : null;
+      const amt = Number(g.amount_total) || 0;
+      const count = Number(g.__count || g.partner_id_count) || 1;
+      prevGrossTotal += amt;
+      prevOrderCount += count;
+      if (pid) prevPartnerMap.set(pid, (prevPartnerMap.get(pid) || 0) + amt);
+    });
+
+    let prevInbound = 0;
+    let prevOutbound = 0;
+    (prevPaymentsData || []).forEach(g => {
+      const amt = Number(g.amount) || 0;
+      if (g.payment_type === 'outbound') prevOutbound += amt;
+      else prevInbound += amt;
+    });
+    const prevCollected = Math.max(0, round2(prevInbound - prevOutbound));
+
+    comparison = {
+      mode: query.comparison || 'previousPeriod',
+      start: previousRange.start,
+      end: previousRange.end,
+      kpis: {
+        gross: round2(prevGrossTotal),
+        returns: 0,
+        net: round2(prevGrossTotal),
+        grossQty: gross > 0 ? round2(prevGrossTotal * (soGrossQty / gross)) : 0,
+        returnsQty: 0,
+        netQty: gross > 0 ? round2(prevGrossTotal * (soGrossQty / gross)) : 0,
+        collected: round2(prevCollected),
+        outstanding: Math.max(0, round2(prevGrossTotal - prevCollected)),
+        invoicesCount: prevOrderCount,
+        returnsCount: 0,
+        totalPostedCount: prevOrderCount,
+        avgInvoice: prevOrderCount ? round2(prevGrossTotal / prevOrderCount) : 0
+      }
+    };
+
+    const allCustomerIds = new Set([...customers.keys(), ...prevPartnerMap.keys()]);
+    growthAnalysis.customers = [...allCustomerIds].map(pid => {
+      const c = customers.get(pid);
+      const pPartner = partners.get(pid);
+      const name = c?.name || pPartner?.name || `عميل #${pid}`;
+      const state = c?.state || pPartner?.state || 'غير محدد';
+      const city = c?.city || pPartner?.city || 'غير محدد';
+      const rep = c?.rep || pPartner?.rep || 'غير محدد';
+      const currentSales = round2(c?.sales || 0);
+      const pSales = round2(prevPartnerMap.get(pid) || 0);
+      const growthAmount = round2(currentSales - pSales);
+      const growthPercent = percentChange(currentSales, pSales);
+      const lossAmount = Math.max(0, round2(pSales - currentSales));
+      return { id: pid, name, state, city, rep, currentSales, previousSales: pSales, growthAmount, growthPercent, lossAmount };
+    }).sort((a, b) => b.currentSales - a.currentSales);
+
+    soChurnWarnings = growthAnalysis.customers
+      .filter(c => c.previousSales > 0 && c.growthAmount < 0)
+      .sort((a, b) => b.lossAmount - a.lossAmount || a.growthPercent - b.growthPercent)
+      .map(c => ({
+        ...c,
+        risk: (c.currentSales === 0 || c.growthPercent <= -50) ? 'مرتفع' : 'متوسط'
+      }));
+
+    growthAnalysis.churnWarnings = soChurnWarnings;
+    growthAnalysis.topDeclining = growthAnalysis.customers.filter(c => c.growthAmount < 0).slice(0, 15);
+    growthAnalysis.topGrowing = growthAnalysis.customers.filter(c => c.growthAmount > 0).slice(0, 15);
+    growthAnalysis.customerGrowthChart = {
+      churn: {
+        labels: soChurnWarnings.slice(0, 15).map(c => c.name),
+        currentSales: soChurnWarnings.slice(0, 15).map(c => c.currentSales),
+        previousSales: soChurnWarnings.slice(0, 15).map(c => c.previousSales),
+        lossAmount: soChurnWarnings.slice(0, 15).map(c => c.lossAmount),
+        growthPercent: soChurnWarnings.slice(0, 15).map(c => c.growthPercent),
+        items: soChurnWarnings.slice(0, 15)
+      },
+      decline: {
+        labels: growthAnalysis.topDeclining.map(c => c.name),
+        currentSales: growthAnalysis.topDeclining.map(c => c.currentSales),
+        previousSales: growthAnalysis.topDeclining.map(c => c.previousSales),
+        lossAmount: growthAnalysis.topDeclining.map(c => c.lossAmount),
+        growthPercent: growthAnalysis.topDeclining.map(c => c.growthPercent),
+        items: growthAnalysis.topDeclining
+      },
+      growth: {
+        labels: growthAnalysis.topGrowing.map(c => c.name),
+        currentSales: growthAnalysis.topGrowing.map(c => c.currentSales),
+        previousSales: growthAnalysis.topGrowing.map(c => c.previousSales),
+        growthAmount: growthAnalysis.topGrowing.map(c => c.growthAmount),
+        growthPercent: growthAnalysis.topGrowing.map(c => c.growthPercent),
+        items: growthAnalysis.topGrowing
+      }
+    };
+  }
+
+  // Top / bottom products by amount and qty
+  const topProductsByAmount = [...products].sort((a, b) => b.amount - a.amount).slice(0, 15);
+  const bottomProductsByAmount = [...products].filter(p => p.amount > 0).sort((a, b) => a.amount - b.amount).slice(0, 15);
+  const topProductsByQty = [...products].sort((a, b) => b.quantity - a.quantity).slice(0, 15);
+  const bottomProductsByQty = [...products].filter(p => p.quantity > 0).sort((a, b) => a.quantity - b.quantity).slice(0, 15);
 
   return {
     status: 'success',
@@ -1368,8 +2405,9 @@ async function buildSalesOrderOverview(auth, query) {
       outstanding: round2(outstanding),
       invoicesCount: orders.length,
       returnsCount: totalReturnsCount,
+      totalPostedCount: orders.length,
       collectionRate: net ? Number((collected / net * 100).toFixed(1)) : 0,
-      avgInvoice: orders.length ? round2(net / orders.length) : 0
+      avgInvoice: orders.length ? round2(gross / orders.length) : 0
     },
     comparison,
     charts: {
@@ -1381,33 +2419,887 @@ async function buildSalesOrderOverview(auth, query) {
       customerGrowth: growthAnalysis.customerGrowthChart,
       customerGrowthItems: growthAnalysis.customers,
       churnWarnings: growthAnalysis.churnWarnings || [],
-      topProducts: (query?.metric === 'quantity' || query?.metric === 'qty')
-        ? [...products].sort((a, b) => b.quantity - a.quantity).slice(0, 10)
-        : [...products].sort((a, b) => b.amount - a.amount).slice(0, 10),
-      bottomProducts: (query?.metric === 'quantity' || query?.metric === 'qty')
-        ? [...products].filter(p => p.quantity > 0).sort((a, b) => a.quantity - b.quantity).slice(0, 10)
-        : [...products].filter(p => p.amount > 0).sort((a, b) => a.amount - b.amount).slice(0, 10),
-      topProductsByAmount: [...products].sort((a, b) => b.amount - a.amount).slice(0, 10),
-      bottomProductsByAmount: [...products].filter(p => p.amount > 0).sort((a, b) => a.amount - b.amount).slice(0, 10),
-      topProductsByQty: [...products].sort((a, b) => b.quantity - a.quantity).slice(0, 10),
-      bottomProductsByQty: [...products].filter(p => p.quantity > 0).sort((a, b) => a.quantity - b.quantity).slice(0, 10),
+      topProducts: (query?.metric === 'quantity' || query?.metric === 'qty') ? topProductsByQty : topProductsByAmount,
+      bottomProducts: (query?.metric === 'quantity' || query?.metric === 'qty') ? bottomProductsByQty : bottomProductsByAmount,
+      topProductsByAmount,
+      bottomProductsByAmount,
+      topProductsByQty,
+      bottomProductsByQty,
       regional: regions
     },
     reps: repsList,
     returns: returnsList,
-    churn: [],
+    churn: soChurnWarnings,
     growthAnalysis,
-    drilldown: regions.map(region => ({
-      ...region,
-      customers: customerRows.filter(c => c.state === region.name)
+    drilldown: regions.map(reg => ({
+      ...reg,
+      customers: customerRows
+        .filter(c => c.city === reg.name || c.state === reg.name || c.geoKey === reg.name)
+        .sort((a, b) => b.sales - a.sales)
     })),
     filterOptions: {
-      regions: [...new Set([...partners.values()].map(p => p.state))],
-      cities: [...new Set([...partners.values()].map(p => p.city))],
-      reps: await getDistinctRepsFromDocuments(auth),
-      customers: [...partners.values()].map(p => ({ id: p.id, name: p.name })),
+      regions: [...new Set(allPartnersList.map(p => p.state))].filter(s => s && s !== 'غير محدد' && s !== 'أخرى / غير محدد' && s !== 'أخرى').sort((a, b) => a.localeCompare(b, 'ar')),
+      cities: [...new Set(allPartnersList.map(p => p.city))].filter(c => c && c !== 'غير محدد').sort((a, b) => a.localeCompare(b, 'ar')),
+      reps: await getDistinctRepsFromDocuments(auth).catch(() => []),
+      customers: allPartnersList.map(p => ({ id: p.id, name: p.name })).filter(p => p.name),
       categories: categories || [],
-      products,
+      products: productCatalog || [],
+      ...dateFacets
+    }
+  };
+}
+
+async function buildSalesInvoiceOverview(auth, query) {
+  const { start, end, year } = getDateRange(query);
+
+  const repId = asPositiveId(query.rep);
+  const repName = await getDistinctRepNameById(auth, repId);
+  const customerId = asPositiveId(query.customer);
+  const productId = asPositiveId(query.product);
+  const search = String(query.query || '').toLowerCase();
+
+  const [{ partnerMap, allPartnersList }, { productCatalog, categories }, odooTargetMap, moveFields, dateFacets] = await Promise.all([
+    getPartnersLookup(auth).catch(() => ({ partnerMap: new Map(), allPartnersList: [] })),
+    getProductCatalog(auth).catch(() => ({ productCatalog: [], categories: [] })),
+    getOdooTeamTargets(auth).catch(() => new Map()),
+    getMoveCustomFields(auth).catch(() => ({ rep: null, region: null, city: null })),
+    getDateFacets(auth, 'postedInvoice').catch(() => ({}))
+  ]);
+  const categoryId = resolveCategoryId(query.category, categories);
+
+  let allowedPartnerIds = [];
+  if (query.region || query.city) {
+    allowedPartnerIds = allPartnersList
+      .filter(p => !query.region || p.state === query.region || p.city === query.region)
+      .filter(p => !query.city || p.city === query.city)
+      .map(p => p.id);
+    if (!allowedPartnerIds.length) allowedPartnerIds = [-1];
+  }
+
+  // Build base moveDomain
+  const moveDomain = [
+    ['state', '=', 'posted'],
+    ['move_type', 'in', ['out_invoice', 'out_refund']],
+    ['invoice_date', '>=', start],
+    ['invoice_date', '<=', end]
+  ];
+  if (repId) {
+    appendSalespersonFilter(moveDomain, moveFields?.rep, repId, repName);
+  }
+  if (customerId) moveDomain.push(['partner_id', '=', customerId]);
+  else if (allowedPartnerIds.length) moveDomain.push(['partner_id', 'in', allowedPartnerIds]);
+  if (productId) moveDomain.push(['invoice_line_ids.product_id', '=', productId]);
+  if (categoryId) moveDomain.push(['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]);
+  if (search) {
+    const matchingProducts = (productCatalog || []).filter(p => p.name.toLowerCase().includes(search));
+    const matchingProdIds = matchingProducts.map(p => p.id);
+    const searchClauses = [
+      ['name', 'ilike', search],
+      ['partner_id.name', 'ilike', search]
+    ];
+    if (moveFields?.rep?.name) searchClauses.push([`${moveFields.rep.name}.name`, 'ilike', search]);
+    if (matchingProdIds.length) searchClauses.push(['invoice_line_ids.product_id', 'in', matchingProdIds]);
+    for (let i = 0; i < searchClauses.length - 1; i++) moveDomain.push('|');
+    searchClauses.forEach(c => moveDomain.push(c));
+  }
+
+  // Build lineDomain (product_id != false ensures real product lines in Odoo)
+  const lineDomain = [
+    ['move_id.state', '=', 'posted'],
+    ['move_id.move_type', 'in', ['out_invoice', 'out_refund']],
+    ['product_id', '!=', false],
+    ['date', '>=', start],
+    ['date', '<=', end]
+  ];
+  if (repId) {
+    const lineRepField = moveFields?.rep ? { ...moveFields.rep, name: `move_id.${moveFields.rep.name}` } : null;
+    appendSalespersonFilter(lineDomain, lineRepField, repId, repName);
+  }
+  if (customerId) lineDomain.push(['move_id.partner_id', '=', customerId]);
+  else if (allowedPartnerIds.length) lineDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
+  if (productId) lineDomain.push(['product_id', '=', productId]);
+  if (categoryId) lineDomain.push(['product_id.categ_id', 'child_of', categoryId]);
+
+  // Payment domain
+  const paymentDomain = [
+    ['partner_type', '=', 'customer'],
+    ['state', 'in', ['in_process', 'inprocess', 'paid', 'posted']],
+    ['date', '>=', start],
+    ['date', '<=', end]
+  ];
+  if (customerId) paymentDomain.push(['partner_id', '=', customerId]);
+  else if (allowedPartnerIds.length) paymentDomain.push(['partner_id', 'in', allowedPartnerIds]);
+  if (repId) {
+    const repPartnerIds = allPartnersList.filter(p => p.repId === repId).map(p => p.id);
+    paymentDomain.push(['partner_id', 'in', repPartnerIds.length ? repPartnerIds : [-1]]);
+  }
+
+  // Yearly monthly series cached
+  const isLastYearComp = (query.comparison || 'previousPeriod') === 'samePeriodLastYear';
+  const prevYear = String(Number(year) - 1);
+  const yearKey = `monthly_series_inv_${auth.uid}_${year}_${repId || 0}_${customerId || 0}`;
+  let yearlySeriesData = getCached(yearKey);
+
+  // Comparison setup
+  const previousRange = comparisonRange(start, end, query.comparison || 'previousPeriod');
+
+  const moveFieldsToFetch = ['id', 'name', 'invoice_date', 'date', 'move_type', 'partner_id', 'invoice_user_id', 'user_id', 'amount_total', 'amount_untaxed', 'amount_residual', 'state', 'ref'];
+  if (moveFields?.rep?.name && !moveFieldsToFetch.includes(moveFields.rep.name)) moveFieldsToFetch.push(moveFields.rep.name);
+  if (moveFields?.region?.name && !moveFieldsToFetch.includes(moveFields.region.name)) moveFieldsToFetch.push(moveFields.region.name);
+  if (moveFields?.city?.name && !moveFieldsToFetch.includes(moveFields.city.name)) moveFieldsToFetch.push(moveFields.city.name);
+
+  // Single Parallel Batch: Moves search_read + fast SQL aggregates (<300ms total)
+  const [
+    rawMoves,
+    paymentSummaryGroups,
+    lineQtySummaryGroups,
+    customerPayGroups,
+    topProductsAmtGroups,
+    topProductsQtyGroups,
+    fetchedYearlyData,
+    prevMovesData,
+    prevPaymentsData
+  ] = await Promise.all([
+    // 1. All moves of the period with essential fields (for reps, customers, regional & drilldown)
+    odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [moveDomain], {
+      fields: moveFieldsToFetch,
+      limit: 10000,
+      order: 'invoice_date desc, id desc'
+    }).catch(err => { console.warn('overview search_read moves failed:', err.message); return []; }),
+
+    // 2. Authoritative Payment Totals via PostgreSQL read_group
+    odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+      paymentDomain,
+      ['amount:sum'],
+      ['payment_type']
+    ]).catch(err => { console.warn('overview payment read_group failed:', err.message); return []; }),
+
+    // 3. Separate invoice and credit-note quantities to avoid ambiguous related-field group values.
+    Promise.all([
+      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+        [...lineDomain, ['move_id.move_type', '=', 'out_invoice']],
+        ['quantity:sum'],
+        []
+      ]).catch(err => { console.warn('overview invoice qty read_group failed:', err.message); return []; }),
+      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+        [...lineDomain, ['move_id.move_type', '=', 'out_refund']],
+        ['quantity:sum'],
+        []
+      ]).catch(err => { console.warn('overview refund qty read_group failed:', err.message); return []; })
+    ]).then(([invoiceQtyGroups, refundQtyGroups]) => ({
+      gross: Number(invoiceQtyGroups?.[0]?.quantity) || 0,
+      returns: Number(refundQtyGroups?.[0]?.quantity) || 0
+    })),
+
+    // 4. Customer Payments Breakdown via read_group
+    odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+      paymentDomain,
+      ['amount:sum'],
+      ['partner_id', 'payment_type'],
+      0, 5000, false, false
+    ]).catch(err => { console.warn('overview customer payments read_group failed:', err.message); return []; }),
+
+    // 5. Top 30 Products by Amount via SQL aggregation
+    odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+      [...lineDomain, ['move_id.move_type', '=', 'out_invoice']],
+      ['price_subtotal', 'quantity'],
+      ['product_id']
+    ], {
+      limit: 30,
+      orderby: 'price_subtotal desc'
+    }).catch(err => {
+      console.warn('overview top prod amount read_group failed:', err.message);
+      return odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+        [...lineDomain, ['move_id.move_type', '=', 'out_invoice']],
+        ['price_subtotal', 'quantity'],
+        ['product_id']
+      ], { limit: 100 }).catch(() => []);
+    }),
+
+    // 6. Top 30 Products by Quantity via SQL aggregation
+    odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+      [...lineDomain, ['move_id.move_type', '=', 'out_invoice']],
+      ['price_subtotal', 'quantity'],
+      ['product_id']
+    ], {
+      limit: 30,
+      orderby: 'quantity desc'
+    }).catch(err => {
+      console.warn('overview top prod qty read_group failed:', err.message);
+      return odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
+        [...lineDomain, ['move_id.move_type', '=', 'out_invoice']],
+        ['price_subtotal', 'quantity'],
+        ['product_id']
+      ], { limit: 100 }).catch(() => []);
+    }),
+
+    // 7. Yearly Monthly Series (cached)
+    yearlySeriesData ? Promise.resolve(yearlySeriesData) : (async () => {
+      const baseMoveFilter = moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true);
+      const [curYearMoves, prevYearMoves] = await Promise.all([
+        odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+          [
+            ...baseMoveFilter,
+            ['invoice_date', '>=', `${year}-01-01`],
+            ['invoice_date', '<=', `${year}-12-31`]
+          ],
+          ['amount_total:sum'],
+          ['invoice_date:month', 'move_type'],
+          0, 100, 'invoice_date:month asc'
+        ]).catch(() => []),
+        odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
+          [
+            ...baseMoveFilter,
+            ['invoice_date', '>=', `${prevYear}-01-01`],
+            ['invoice_date', '<=', `${prevYear}-12-31`]
+          ],
+          ['amount_total:sum'],
+          ['invoice_date:month', 'move_type'],
+          0, 100, 'invoice_date:month asc'
+        ]).catch(() => [])
+      ]);
+      const data = { curYearMoves, prevYearMoves };
+      setCached(yearKey, data, 30 * 60 * 1000);
+      return data;
+    })(),
+
+    // 8. Comparison Moves
+    previousRange ? (async () => {
+      const prevDomain = [
+        ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
+        ['invoice_date', '>=', previousRange.start],
+        ['invoice_date', '<=', previousRange.end]
+      ];
+      return odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
+        prevDomain
+      ], {
+        fields: ['id', 'partner_id', 'amount_total', 'move_type'],
+        limit: 10000
+      }).catch(() => []);
+    })() : Promise.resolve([]),
+
+    // 9. Comparison Payments
+    previousRange ? (async () => {
+      const prevPayDomain = [
+        ...paymentDomain.filter((item) => Array.isArray(item) ? item[0] !== 'date' : true),
+        ['date', '>=', previousRange.start],
+        ['date', '<=', previousRange.end]
+      ];
+      return odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+        prevPayDomain,
+        ['amount:sum'],
+        ['payment_type']
+      ]).catch(() => []);
+    })() : Promise.resolve([])
+  ]);
+
+  // 1. Authoritative Invoice & Refund Summary from rawMoves
+  const moves = rawMoves || [];
+  const invoices = moves.filter(m => m.move_type === 'out_invoice');
+  const refunds = moves.filter(m => m.move_type === 'out_refund');
+  const invoiceCount = invoices.length;
+  const returnCount = refunds.length;
+  const totalPostedCount = moves.length;
+
+  const gross = round2(invoices.reduce((sum, m) => sum + (Math.abs(Number(m.amount_total)) || 0), 0));
+  const returns = round2(refunds.reduce((sum, m) => sum + (Math.abs(Number(m.amount_total)) || 0), 0));
+  const net = Math.max(0, round2(gross - returns));
+
+  const untaxedGross = invoices.reduce((sum, m) => sum + (Math.abs(Number(m.amount_untaxed)) || 0), 0);
+  const untaxedReturns = refunds.reduce((sum, m) => sum + (Math.abs(Number(m.amount_untaxed)) || 0), 0);
+  const untaxed = Math.max(0, round2(untaxedGross - untaxedReturns));
+
+  const invoiceResidual = invoices.reduce((sum, m) => sum + (Math.abs(Number(m.amount_residual)) || 0), 0);
+  const returnResidual = refunds.reduce((sum, m) => sum + (Math.abs(Number(m.amount_residual)) || 0), 0);
+  const outstanding = Math.max(0, round2(invoiceResidual - returnResidual));
+
+  // 2. Authoritative Payments Summary (Matches drill-down 100% to the cent)
+  let totalInboundPaymentAmt = 0;
+  let totalOutboundPaymentAmt = 0;
+  (paymentSummaryGroups || []).forEach(p => {
+    const amt = Math.abs(Number(p.amount) || 0);
+    if (p.payment_type === 'outbound') {
+      totalOutboundPaymentAmt += amt;
+    } else {
+      totalInboundPaymentAmt += amt;
+    }
+  });
+  const collected = Math.max(0, round2(totalInboundPaymentAmt - totalOutboundPaymentAmt));
+  const rate = net > 0 ? (collected / net * 100) : 0;
+  const avgInvoice = invoiceCount > 0 ? round2(gross / invoiceCount) : 0;
+
+  // 3. Line Quantities
+  const totalGrossQty = round2(Math.abs(Number(lineQtySummaryGroups?.gross) || 0));
+  const totalReturnedQty = round2(Math.abs(Number(lineQtySummaryGroups?.returns) || 0));
+  const totalNetQty = round2(Math.max(0, totalGrossQty - totalReturnedQty));
+
+  // 4. Sales Reps Performance
+  const repsMap = new Map();
+  moves.forEach(m => {
+    const customRepVal = moveFields?.rep?.name ? fieldValue(m[moveFields.rep.name]) : null;
+    const repId = customRepVal?.key ?? null;
+    const repName = customRepVal?.name || 'غير محدد';
+    const key = normalizeArabicLabel(repName) || (repId !== null ? String(repId) : 'unassigned');
+    const entry = repsMap.get(key) || {
+      id: repId,
+      name: repName,
+      gross: 0,
+      returns: 0,
+      achieved: 0,
+      remaining: 0,
+      count: 0,
+      invoicesCount: 0,
+      returnsCount: 0
+    };
+    const amt = Math.abs(Number(m.amount_total)) || 0;
+    const res = Math.abs(Number(m.amount_residual)) || 0;
+
+    if (m.move_type === 'out_refund') {
+      entry.returns += amt;
+      entry.returnsCount += 1;
+      entry.achieved -= amt;
+      entry.remaining -= res;
+    } else {
+      entry.gross += amt;
+      entry.invoicesCount += 1;
+      entry.achieved += amt;
+      entry.remaining += res;
+    }
+    entry.count += 1;
+    repsMap.set(key, entry);
+  });
+
+  const repsList = [...repsMap.values()].map(r => {
+    const grossAmt = round2(r.gross);
+    const returnsAmt = round2(r.returns);
+    const achieved = Math.max(0, round2(grossAmt - returnsAmt));
+    const remaining = Math.max(0, round2(r.remaining));
+    const repCollected = Math.min(achieved, Math.max(0, round2(achieved - remaining)));
+    const repRemaining = Math.max(0, round2(achieved - repCollected));
+
+    const targetFromOdoo = r.id ? odooTargetMap?.get(r.id) : null;
+    const hasTarget = Boolean(targetFromOdoo && Number(targetFromOdoo) > 0);
+    const target = hasTarget ? round2(targetFromOdoo) : null;
+    const targetPercentage = hasTarget ? Number((achieved / target * 100).toFixed(1)) : null;
+
+    const contributionRate = net > 0 ? Number((Math.max(0, achieved) / net * 100).toFixed(1)) : 0;
+    const percentage = hasTarget ? targetPercentage : contributionRate;
+
+    return {
+      id: r.id,
+      name: r.name,
+      achieved,
+      gross: grossAmt,
+      returns: returnsAmt,
+      collected: repCollected,
+      remaining: repRemaining,
+      target,
+      hasTarget,
+      percentage,
+      contributionRate,
+      theoreticalPercentage: null,
+      theoreticalGap: null,
+      actualGap: hasTarget ? Number((targetPercentage - 100).toFixed(1)) : null,
+      count: r.count,
+      invoicesCount: r.invoicesCount,
+      returnsCount: r.returnsCount,
+      kpi: achieved > 0 ? 'مبيعات مؤكدة' : 'بدون مبيعات'
+    };
+  }).sort((a, b) => b.achieved - a.achieved);
+
+  // 5. Customers & Regional Aggregation
+  const partnerPaymentMap = new Map();
+  (customerPayGroups || []).forEach(p => {
+    const pid = p.partner_id ? p.partner_id[0] : null;
+    if (!pid) return;
+    const amt = Math.abs(Number(p.amount) || 0);
+    if (p.payment_type === 'outbound') {
+      partnerPaymentMap.set(pid, (partnerPaymentMap.get(pid) || 0) - amt);
+    } else {
+      partnerPaymentMap.set(pid, (partnerPaymentMap.get(pid) || 0) + amt);
+    }
+  });
+
+  const customersMap = new Map();
+  const customerBreakdownMap = new Map();
+  const regionalTotals = {};
+
+  moves.forEach(m => {
+    if (!m.partner_id) return;
+    const pId = m.partner_id[0];
+    const pName = m.partner_id[1];
+    const customRepVal = moveFields?.rep?.name ? fieldValue(m[moveFields.rep.name]) : null;
+    const repId = customRepVal?.key ?? null;
+    const repName = customRepVal?.name || 'غير محدد';
+
+    const customRegVal = moveFields?.region?.name ? fieldValue(m[moveFields.region.name]) : null;
+    const customCityVal = moveFields?.city?.name ? fieldValue(m[moveFields.city.name]) : null;
+
+    const info = partnerMap.get(pId) || { state: 'أخرى', city: 'غير محدد', rep: 'غير محدد' };
+
+    const cityName = (customCityVal && customCityVal.name !== 'غير محدد')
+      ? customCityVal.name
+      : ((info.city && info.city !== 'غير محدد') ? info.city : ((info.state && info.state !== 'أخرى / غير محدد' && info.state !== 'غير محدد') ? info.state : 'أخرى'));
+    const stateName = (customRegVal && customRegVal.name !== 'غير محدد')
+      ? customRegVal.name
+      : ((info.state && info.state !== 'أخرى / غير محدد' && info.state !== 'غير محدد') ? info.state : cityName);
+    const geoKey = (customRegVal && customRegVal.name !== 'غير محدد') ? customRegVal.name : cityName;
+
+    const amt = Math.abs(Number(m.amount_total)) || 0;
+    const res = Math.abs(Number(m.amount_residual)) || 0;
+
+    // Overall customer entry (for growth analysis and partner lists)
+    const cust = customersMap.get(pId) || {
+      id: pId,
+      name: pName,
+      state: stateName,
+      city: cityName,
+      geoKey,
+      rep: repName,
+      gross: 0,
+      returns: 0,
+      sales: 0,
+      collected: 0,
+      outstanding: 0,
+      invoices: 0,
+      grossQty: 0,
+      returnedQty: 0,
+      netQty: 0
+    };
+
+    // Detailed customer-rep breakdown entry (strictly grouped by actual invoice rep in Odoo)
+    const custRepKey = `${pId}_${repId || repName || 'unassigned'}`;
+    const custRep = customerBreakdownMap.get(custRepKey) || {
+      id: pId,
+      repId,
+      name: pName,
+      state: stateName,
+      city: cityName,
+      geoKey,
+      rep: repName,
+      gross: 0,
+      returns: 0,
+      sales: 0,
+      collected: 0,
+      outstanding: 0,
+      invoices: 0,
+      grossQty: 0,
+      returnedQty: 0,
+      netQty: 0
+    };
+
+    if (m.move_type === 'out_refund') {
+      cust.returns += amt;
+      custRep.returns += amt;
+    } else {
+      cust.gross += amt;
+      cust.invoices += 1;
+      cust.collected += Math.max(0, amt - res);
+      cust.outstanding += res;
+
+      custRep.gross += amt;
+      custRep.invoices += 1;
+      custRep.collected += Math.max(0, amt - res);
+      custRep.outstanding += res;
+    }
+    customersMap.set(pId, cust);
+    customerBreakdownMap.set(custRepKey, custRep);
+
+    if (!regionalTotals[geoKey]) {
+      regionalTotals[geoKey] = {
+        name: geoKey,
+        state: stateName,
+        city: cityName,
+        sales: 0,
+        gross: 0,
+        returns: 0,
+        collected: 0,
+        residual: 0,
+        invoices: 0,
+        grossQty: 0,
+        returnedQty: 0,
+        netQty: 0
+      };
+    }
+    if (m.move_type === 'out_refund') {
+      regionalTotals[geoKey].returns += amt;
+    } else {
+      regionalTotals[geoKey].gross += amt;
+      regionalTotals[geoKey].invoices += 1;
+      regionalTotals[geoKey].collected += Math.max(0, amt - res);
+      regionalTotals[geoKey].residual += res;
+    }
+  });
+
+  // Authoritatively finalize customer sales for growth analysis
+  customersMap.forEach(cust => {
+    cust.gross = round2(cust.gross);
+    cust.returns = round2(cust.returns);
+    cust.sales = Math.max(0, round2(cust.gross - cust.returns));
+    cust.collected = round2(cust.collected);
+    cust.outstanding = round2(cust.outstanding);
+  });
+
+  const customerBreakdown = [...customerBreakdownMap.values()].map(c => {
+    const cGross = round2(c.gross);
+    const cReturns = round2(c.returns);
+    const cSales = Math.max(0, round2(cGross - cReturns));
+    const cPaid = round2(c.collected);
+    const cOutstanding = round2(Math.max(0, cSales - cPaid));
+    const cGrossRatio = gross > 0 ? (cGross / gross) : 0;
+    const custGrossQty = round2(totalGrossQty * cGrossRatio);
+    const custReturnedQty = round2(totalReturnedQty * (returns > 0 ? (cReturns / returns) : 0));
+    const custNetQty = round2(Math.max(0, custGrossQty - custReturnedQty));
+    return {
+      ...c,
+      gross: cGross,
+      returns: cReturns,
+      sales: cSales,
+      collected: cPaid,
+      outstanding: cOutstanding,
+      grossQty: custGrossQty,
+      returnedQty: custReturnedQty,
+      netQty: custNetQty,
+      rate: cSales > 0 ? Number((cPaid / cSales * 100).toFixed(1)) : 0
+    };
+  }).sort((a, b) => b.sales - a.sales);
+
+  const regionalList = Object.values(regionalTotals).map(r => {
+    const rGross = round2(r.gross);
+    const rReturns = round2(r.returns);
+    const rSales = Math.max(0, round2(rGross - rReturns));
+    const rCollected = round2(r.collected);
+    const rResidual = round2(r.residual);
+    const regGrossRatio = gross > 0 ? (rGross / gross) : 0;
+    const regGrossQty = round2(totalGrossQty * regGrossRatio);
+    const regReturnedQty = round2(totalReturnedQty * (returns > 0 ? (rReturns / returns) : 0));
+    const regNetQty = round2(Math.max(0, regGrossQty - regReturnedQty));
+    return {
+      ...r,
+      gross: rGross,
+      returns: rReturns,
+      sales: rSales,
+      collected: rCollected,
+      outstanding: rResidual,
+      grossQty: regGrossQty,
+      returnedQty: regReturnedQty,
+      netQty: regNetQty,
+      rate: rSales > 0 ? Number((rCollected / rSales * 100).toFixed(1)) : 0
+    };
+  }).sort((a, b) => b.sales - a.sales);
+
+  // 6. Top & Bottom Products
+  let topProductsByAmount = (topProductsAmtGroups || []).map(g => ({
+    name: g.product_id ? g.product_id[1] : 'منتج غير محدد',
+    amount: round2(g.price_subtotal || 0),
+    quantity: round2(g.quantity || 0),
+    count: Number(g.__count || g.product_id_count) || 1
+  })).filter(p => p.amount > 0 || p.quantity > 0).slice(0, 15);
+
+  let topProductsByQty = (topProductsQtyGroups || []).map(g => ({
+    name: g.product_id ? g.product_id[1] : 'منتج غير محدد',
+    amount: round2(g.price_subtotal || 0),
+    quantity: round2(g.quantity || 0),
+    count: Number(g.__count || g.product_id_count) || 1
+  })).filter(p => p.amount > 0 || p.quantity > 0).slice(0, 15);
+
+  // Fallback: If read_group on move.line was restricted by Odoo version, fetch recent sample invoice lines
+  if (topProductsByAmount.length === 0 && moves.length > 0) {
+    try {
+      const topMoveIds = moves.slice(0, 300).map(m => m.id);
+      const sampleLines = await odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [
+        [['move_id', 'in', topMoveIds], ['product_id', '!=', false]]
+      ], { fields: ['product_id', 'price_subtotal', 'quantity'], limit: 2000 }).catch(() => []);
+      
+      const fallbackProdMap = new Map();
+      (sampleLines || []).forEach(l => {
+        if (!l.product_id) return;
+        const pid = l.product_id[0];
+        const pname = l.product_id[1];
+        const entry = fallbackProdMap.get(pid) || { name: pname, amount: 0, quantity: 0, count: 0 };
+        entry.amount += (Number(l.price_subtotal) || 0);
+        entry.quantity += (Number(l.quantity) || 0);
+        entry.count += 1;
+        fallbackProdMap.set(pid, entry);
+      });
+      if (fallbackProdMap.size > 0) {
+        topProductsByAmount = [...fallbackProdMap.values()].map(p => ({ ...p, amount: round2(p.amount), quantity: round2(p.quantity) })).sort((a, b) => b.amount - a.amount).slice(0, 15);
+        topProductsByQty = [...fallbackProdMap.values()].map(p => ({ ...p, amount: round2(p.amount), quantity: round2(p.quantity) })).sort((a, b) => b.quantity - a.quantity).slice(0, 15);
+      }
+    } catch (err) {
+      console.warn('fallback product line query error:', err.message);
+    }
+  }
+
+  const bottomProductsByAmount = [...topProductsByAmount].filter(p => p.amount > 0).reverse().slice(0, 15);
+  const bottomProductsByQty = [...topProductsByQty].filter(p => p.quantity > 0).reverse().slice(0, 15);
+
+  const metric = String(query.metric || 'amount').toLowerCase();
+  const isQtyMetric = metric === 'quantity' || metric === 'qty';
+  const topProducts = isQtyMetric ? topProductsByQty : topProductsByAmount;
+  const bottomProducts = isQtyMetric ? bottomProductsByQty : bottomProductsByAmount;
+
+  // 7. Recent Returns List
+  const returnsList = (refunds || []).slice(0, 30).map((r, i) => {
+    const pInfo = r.partner_id ? partnerMap.get(r.partner_id[0]) : null;
+    const customRepVal = moveFields?.rep?.name ? fieldValue(r[moveFields.rep.name]) : null;
+    const repName = customRepVal?.name || 'غير محدد';
+    const customRegVal = moveFields?.region?.name ? fieldValue(r[moveFields.region.name]) : null;
+    const regionName = (customRegVal && customRegVal.name !== 'غير محدد')
+      ? customRegVal.name
+      : (pInfo ? pInfo.state : 'غير محدد');
+    return {
+      id: r.id,
+      moveId: r.id,
+      creditNote: r.name || `CN-${String(i + 1).padStart(4, '0')}`,
+      product: r.ref || 'مرتجع مبيعات',
+      category: 'غير محدد',
+      customer: r.partner_id ? r.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
+      rep: repName,
+      region: regionName,
+      date: r.invoice_date || r.date,
+      returnedQty: 1,
+      returns: round2(Math.abs(Number(r.amount_total)) || 0),
+      odooLink: `${ODOO_URL}/web#id=${r.id}&model=account.move&view_type=form`
+    };
+  });
+
+  // 8. Yearly 12-Month Series
+  const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const parseMonthIndex = (val) => {
+    if (!val) return -1;
+    const str = String(val).toLowerCase().trim();
+    const numMatch = str.match(/(?:^|[-/ ])(0?[1-9]|1[0-2])(?:[-/ ]|$)/);
+    if (numMatch) return Number(numMatch[1]) - 1;
+    const arIdx = monthNames.findIndex(m => str.includes(m));
+    if (arIdx >= 0) return arIdx;
+    const enIdx = englishMonths.findIndex(m => str.includes(m));
+    if (enIdx >= 0) return enIdx;
+    return -1;
+  };
+
+  const monthlyGross = new Array(12).fill(0);
+  const monthlyReturns = new Array(12).fill(0);
+  const monthlyNet = new Array(12).fill(0);
+  const prevMonthlyGross = new Array(12).fill(0);
+
+  (fetchedYearlyData?.curYearMoves || []).forEach(m => {
+    const idx = parseMonthIndex(m['invoice_date:month'] || m.invoice_date);
+    if (idx >= 0 && idx < 12) {
+      const amt = Math.abs(Number(m.amount_total)) || 0;
+      if (m.move_type === 'out_refund') {
+        monthlyReturns[idx] += amt;
+      } else {
+        monthlyGross[idx] += amt;
+      }
+      monthlyNet[idx] = Math.max(0, monthlyGross[idx] - monthlyReturns[idx]);
+    }
+  });
+
+  (fetchedYearlyData?.prevYearMoves || []).forEach(m => {
+    const idx = parseMonthIndex(m['invoice_date:month'] || m.invoice_date);
+    if (idx >= 0 && idx < 12) {
+      const amt = Math.abs(Number(m.amount_total)) || 0;
+      if (m.move_type !== 'out_refund') {
+        prevMonthlyGross[idx] += amt;
+      }
+    }
+  });
+
+  const calculatedTimeSeries = {
+    month: monthNames.map((label, index) => {
+      const currentSales = monthlyGross[index] || 0;
+      const previousSales = isLastYearComp
+        ? (prevMonthlyGross[index] || 0)
+        : (index > 0 ? (monthlyGross[index - 1] || 0) : (prevMonthlyGross[11] || 0));
+      return {
+        label,
+        currentSales,
+        previousSales,
+        growthPercent: percentChange(currentSales, previousSales)
+      };
+    })
+  };
+
+  // 9. Comparison & Growth / Churn Analysis
+  let comparison = null;
+  let churnWarnings = [];
+  let growthAnalysis = {
+    source: 'postedInvoice',
+    regions: regionalList.map(r => ({ name: r.name, currentSales: r.sales, previousSales: 0, growthAmount: r.sales, growthPercent: 0 })),
+    customers: customerBreakdown.map(c => ({ id: c.id, name: c.name, state: c.state, city: c.city, rep: c.rep, currentSales: c.sales, previousSales: 0, growthAmount: c.sales, growthPercent: 0, lossAmount: 0 })),
+    churnWarnings: [],
+    topDeclining: [],
+    topGrowing: [],
+    customerGrowthChart: {
+      churn: { labels: [], currentSales: [], previousSales: [], lossAmount: [], growthPercent: [], items: [] },
+      decline: { labels: [], currentSales: [], previousSales: [], lossAmount: [], growthPercent: [], items: [] },
+      growth: { labels: [], currentSales: [], previousSales: [], growthAmount: [], growthPercent: [], items: [] }
+    },
+    previousRange
+  };
+
+  if (previousRange && Array.isArray(prevMovesData)) {
+    const prevPartnerMap = new Map();
+    let prevGrossTotal = 0;
+    let prevReturnsTotal = 0;
+    let prevInvoiceCount = 0;
+    let prevReturnCount = 0;
+
+    prevMovesData.forEach(g => {
+      const pid = g.partner_id ? g.partner_id[0] : null;
+      const amt = Math.abs(Number(g.amount_total)) || 0;
+
+      if (g.move_type === 'out_refund') {
+        prevReturnsTotal += amt;
+        prevReturnCount += 1;
+        if (pid) prevPartnerMap.set(pid, (prevPartnerMap.get(pid) || 0) - amt);
+      } else {
+        prevGrossTotal += amt;
+        prevInvoiceCount += 1;
+        if (pid) prevPartnerMap.set(pid, (prevPartnerMap.get(pid) || 0) + amt);
+      }
+    });
+
+    const prevNetTotal = Math.max(0, round2(prevGrossTotal - prevReturnsTotal));
+
+    let prevInbound = 0;
+    let prevOutbound = 0;
+    (prevPaymentsData || []).forEach(g => {
+      const amt = Math.abs(Number(g.amount)) || 0;
+      if (g.payment_type === 'outbound') prevOutbound += amt;
+      else prevInbound += amt;
+    });
+    const prevCollected = Math.max(0, round2(prevInbound - prevOutbound));
+
+    comparison = {
+      mode: query.comparison || 'previousPeriod',
+      start: previousRange.start,
+      end: previousRange.end,
+      kpis: {
+        gross: round2(prevGrossTotal),
+        returns: round2(prevReturnsTotal),
+        net: prevNetTotal,
+        grossQty: gross > 0 ? round2(prevGrossTotal * (totalGrossQty / gross)) : 0,
+        returnsQty: returns > 0 ? round2(prevReturnsTotal * (totalReturnedQty / returns)) : 0,
+        netQty: gross > 0 ? round2(prevNetTotal * (totalNetQty / (net || 1))) : 0,
+        collected: round2(prevCollected),
+        outstanding: Math.max(0, round2(prevNetTotal - prevCollected)),
+        invoicesCount: prevInvoiceCount,
+        returnsCount: prevReturnCount,
+        totalPostedCount: prevInvoiceCount + prevReturnCount,
+        avgInvoice: prevInvoiceCount ? round2(prevGrossTotal / prevInvoiceCount) : 0
+      }
+    };
+
+    const allCustomerIds = new Set([...customersMap.keys(), ...prevPartnerMap.keys()]);
+    growthAnalysis.customers = [...allCustomerIds].map(pid => {
+      const c = customersMap.get(pid);
+      const pPartner = partnerMap.get(pid);
+      const name = c?.name || pPartner?.name || `عميل #${pid}`;
+      const state = c?.state || pPartner?.state || 'غير محدد';
+      const city = c?.city || pPartner?.city || 'غير محدد';
+      const rep = c?.rep || pPartner?.rep || 'غير محدد';
+      const currentSales = round2(c?.sales || 0);
+      const pSales = round2(Math.max(0, prevPartnerMap.get(pid) || 0));
+      const growthAmount = round2(currentSales - pSales);
+      const growthPercent = percentChange(currentSales, pSales);
+      const lossAmount = Math.max(0, round2(pSales - currentSales));
+      return { id: pid, name, state, city, rep, currentSales, previousSales: pSales, growthAmount, growthPercent, lossAmount };
+    }).sort((a, b) => b.currentSales - a.currentSales);
+
+    churnWarnings = growthAnalysis.customers
+      .filter(c => c.previousSales > 0 && c.growthAmount < 0)
+      .sort((a, b) => b.lossAmount - a.lossAmount || a.growthPercent - b.growthPercent)
+      .map(c => ({
+        ...c,
+        risk: (c.currentSales === 0 || c.growthPercent <= -50) ? 'مرتفع' : 'متوسط'
+      }));
+
+    growthAnalysis.churnWarnings = churnWarnings;
+    growthAnalysis.topDeclining = growthAnalysis.customers.filter(c => c.growthAmount < 0).slice(0, 15);
+    growthAnalysis.topGrowing = growthAnalysis.customers.filter(c => c.growthAmount > 0).slice(0, 15);
+    growthAnalysis.customerGrowthChart = {
+      churn: {
+        labels: churnWarnings.slice(0, 15).map(c => c.name),
+        currentSales: churnWarnings.slice(0, 15).map(c => c.currentSales),
+        previousSales: churnWarnings.slice(0, 15).map(c => c.previousSales),
+        lossAmount: churnWarnings.slice(0, 15).map(c => c.lossAmount),
+        growthPercent: churnWarnings.slice(0, 15).map(c => c.growthPercent),
+        items: churnWarnings.slice(0, 15)
+      },
+      decline: {
+        labels: growthAnalysis.topDeclining.map(c => c.name),
+        currentSales: growthAnalysis.topDeclining.map(c => c.currentSales),
+        previousSales: growthAnalysis.topDeclining.map(c => c.previousSales),
+        lossAmount: growthAnalysis.topDeclining.map(c => c.lossAmount),
+        growthPercent: growthAnalysis.topDeclining.map(c => c.growthPercent),
+        items: growthAnalysis.topDeclining
+      },
+      growth: {
+        labels: growthAnalysis.topGrowing.map(c => c.name),
+        currentSales: growthAnalysis.topGrowing.map(c => c.currentSales),
+        previousSales: growthAnalysis.topGrowing.map(c => c.previousSales),
+        growthAmount: growthAnalysis.topGrowing.map(c => c.growthAmount),
+        growthPercent: growthAnalysis.topGrowing.map(c => c.growthPercent),
+        items: growthAnalysis.topGrowing
+      }
+    };
+  }
+
+  return {
+    status: 'success',
+    source: 'postedInvoice',
+    timestamp: new Date().toISOString(),
+    filters: { start, end, year },
+    kpis: {
+      gross: round2(gross),
+      returns: round2(returns),
+      net: round2(net),
+      untaxed: round2(untaxed),
+      grossQty: totalGrossQty,
+      returnsQty: totalReturnedQty,
+      netQty: totalNetQty,
+      collected: round2(collected),
+      outstanding: round2(outstanding),
+      invoicesCount: invoiceCount,
+      returnsCount: returnCount,
+      totalPostedCount: totalPostedCount,
+      collectionRate: Number(rate.toFixed(1)),
+      avgInvoice: round2(avgInvoice)
+    },
+    comparison,
+    charts: {
+      months: monthNames,
+      monthlyGross: monthlyGross.map(round2),
+      monthlyReturns: monthlyReturns.map(round2),
+      monthlyNet: monthlyNet.map(round2),
+      growthTimeSeries: calculatedTimeSeries,
+      customerGrowth: growthAnalysis.customerGrowthChart,
+      customerGrowthItems: growthAnalysis.customers,
+      churnWarnings: growthAnalysis.churnWarnings || [],
+      topProducts,
+      bottomProducts,
+      topProductsByAmount,
+      bottomProductsByAmount,
+      topProductsByQty,
+      bottomProductsByQty,
+      regional: regionalList
+    },
+    reps: repsList,
+    returns: returnsList,
+    churn: churnWarnings,
+    growthAnalysis,
+    customerBreakdown,
+    drilldown: customerBreakdown,
+    filterOptions: {
+      regions: [...new Set([...allPartnersList.map(p => p.state), ...regionalList.map(r => r.name)])].filter(s => s && s !== 'غير محدد' && s !== 'أخرى / غير محدد' && s !== 'أخرى').sort((a, b) => a.localeCompare(b, 'ar')),
+      cities: [...new Set(allPartnersList.map(p => p.city))].filter(c => c && c !== 'غير محدد').sort((a, b) => a.localeCompare(b, 'ar')),
+      reps: await getDistinctRepsFromDocuments(auth, 'postedInvoice').catch(() => []),
+      customers: allPartnersList.map(p => ({ id: p.id, name: p.name })).filter(p => p.name),
+      categories: categories || [],
+      products: productCatalog || [],
       ...dateFacets
     }
   };
@@ -1421,803 +3313,84 @@ app.get('/api/dashboard/overview', async (req, res) => {
     const auth = await getAuthCredentials(req);
     if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
 
-    if (req.query.source === 'salesOrder') {
-      return res.json(await buildSalesOrderOverview(auth, req.query));
-    }
-
     const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
-    const cacheKey = `overview_${auth.uid}_${JSON.stringify(req.query)}`;
+    const cacheKey = normalizeCacheKey('overview', auth.uid, req.query);
+
     if (!forceRefresh) {
       const cached = getCached(cacheKey);
-      if (cached) return res.json(cached);
-    }
-
-    const { start, end, year } = getDateRange(req.query);
-
-    // Build base move domain
-    const moveDomain = [
-      ['state', '=', 'posted'],
-      ['move_type', 'in', ['out_invoice', 'out_refund']],
-      ['invoice_date', '>=', start],
-      ['invoice_date', '<=', end]
-    ];
-
-    // 1. Partner State & City Lookup Map
-    let partnerMap = getCached('partners_map');
-    let allPartnersList = getCached('partners_list');
-    if (!partnerMap || !allPartnersList) {
-      const rawPartners = await odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [
-        [['customer_rank', '>', 0]]
-      ], { fields: ['id', 'name', 'state_id', 'city', 'phone'], limit: 10000 });
-
-      partnerMap = new Map();
-      allPartnersList = [];
-      rawPartners.forEach(p => {
-        const stateName = p.state_id ? p.state_id[1].replace(/\s*\(EG\)$/i, '').trim() : 'غير محدد';
-        const partnerObj = {
-          id: p.id,
-          name: p.name,
-          state: stateName,
-          city: p.city || 'غير محدد',
-          phone: p.phone || ''
-        };
-        partnerMap.set(p.id, partnerObj);
-        allPartnersList.push(partnerObj);
-      });
-      setCached('partners_map', partnerMap, 30 * 60 * 1000);
-      setCached('partners_list', allPartnersList, 30 * 60 * 1000);
-    }
-
-    // Every dimension filter is converted to an Odoo domain before any KPI or
-    // chart is queried.  Values are ids where Odoo expects ids; region/city are
-    // attributes of the customer, so they are resolved to customer ids first.
-    const allowedPartnerIds = allPartnersList
-      .filter(p => !req.query.region || p.state === req.query.region)
-      .filter(p => !req.query.city || p.city === req.query.city)
-      .map(p => p.id);
-    const matchingSearchPartnerIds = req.query.query
-      ? allPartnersList
-        .filter(p => [p.name, p.state, p.city].some(v => String(v).toLowerCase().includes(String(req.query.query).toLowerCase())))
-        .map(p => p.id)
-      : [];
-    let matchingSearchProductIds = [];
-    if (req.query.query) {
-      const matchingProducts = await odooExecuteKw(auth.uid, auth.password, 'product.product', 'search_read', [
-        [['name', 'ilike', String(req.query.query)]]
-      ], { fields: ['id'], limit: 1000 });
-      matchingSearchProductIds = matchingProducts.map(product => product.id);
-    }
-    if (req.query.region || req.query.city) {
-      if (req.query.query) {
-        moveDomain.push('&', ['partner_id', 'in', allowedPartnerIds], '|', ['partner_id', 'in', matchingSearchPartnerIds], ['invoice_line_ids.product_id', 'in', matchingSearchProductIds]);
-      } else {
-        moveDomain.push(['partner_id', 'in', allowedPartnerIds]);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        return res.json(cached);
       }
-    } else if (req.query.query) {
-      moveDomain.push('|', ['partner_id', 'in', matchingSearchPartnerIds], ['invoice_line_ids.product_id', 'in', matchingSearchProductIds]);
     }
-    const repId = asPositiveId(req.query.rep);
-    const customerId = asPositiveId(req.query.customer);
-    const productId = asPositiveId(req.query.product);
-    const categoryId = asPositiveId(req.query.category);
-    if (repId) moveDomain.push(['invoice_user_id', '=', repId]);
-    if (customerId) moveDomain.push(['partner_id', '=', customerId]);
-    if (productId) moveDomain.push(['invoice_line_ids.product_id', '=', productId]);
-    if (categoryId) moveDomain.push(['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]);
+    res.setHeader('X-Cache', 'MISS');
 
-    const growthAnalysis = await buildGrowthAnalysis(
-      auth,
-      moveDomain,
-      start,
-      end,
-      req.query.comparison || 'previousPeriod',
-      partnerMap
-    );
-
-    // 2. Query KPIs (Invoices vs Refunds vs All Posted Moves)
-    const [invoicesSummary, returnsSummary, allPostedSummary] = await Promise.all([
-      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-        [...moveDomain, ['move_type', '=', 'out_invoice']],
-        ['amount_total_signed:sum', 'amount_total:sum', 'amount_untaxed_signed:sum', 'amount_residual_signed:sum', 'amount_residual:sum'],
-        []
-      ]),
-      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-        [...moveDomain, ['move_type', '=', 'out_refund']],
-        ['amount_total_signed:sum', 'amount_total:sum', 'amount_untaxed_signed:sum', 'amount_residual_signed:sum', 'amount_residual:sum'],
-        []
-      ]),
-      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-        [...moveDomain],
-        ['amount_total_signed:sum', 'amount_total:sum', 'amount_untaxed_signed:sum', 'amount_residual_signed:sum', 'amount_residual:sum'],
-        []
-      ])
-    ]);
-
-    const invoiceCount = invoicesSummary[0]?.__count || 0;
-    const returnCount = returnsSummary[0]?.__count || 0;
-    const totalPostedCount = allPostedSummary[0]?.__count || (invoiceCount + returnCount);
-
-    const rawInvoiceAmount = extractMoveAmount(invoicesSummary[0]);
-    const returns = extractMoveAmount(returnsSummary[0]);
-    const untaxed = extractMoveUntaxed(allPostedSummary[0]) || extractMoveUntaxed(invoicesSummary[0]);
-
-    // In Odoo, allPostedSummary.amount_total_signed is the exact net accounting total of all posted documents (invoices - refunds) in company currency
-    let net = 0;
-    let gross = 0;
-    if (allPostedSummary[0]?.amount_total_signed !== undefined && allPostedSummary[0]?.amount_total_signed !== null) {
-      net = Number(allPostedSummary[0].amount_total_signed) || 0;
-      gross = net + returns;
+    let payload;
+    if (req.query.source === 'salesOrder') {
+      payload = await buildSalesOrderOverview(auth, req.query);
     } else {
-      gross = rawInvoiceAmount;
-      net = Math.max(0, gross - returns);
+      payload = await buildSalesInvoiceOverview(auth, req.query);
     }
 
-    const invoiceResidual = extractMoveResidual(invoicesSummary[0]);
-    const returnResidual = extractMoveResidual(returnsSummary[0]);
-    const outstanding = Math.max(0, invoiceResidual - returnResidual);
-    const collected = Math.max(0, net - outstanding);
-    const rate = net > 0 ? (collected / net * 100) : 0;
-    const avgInvoice = invoiceCount > 0 ? (net / invoiceCount) : 0;
-
-    // 3. Monthly Growth Series
-    const isLastYearComp = (req.query.comparison || 'previousPeriod') === 'samePeriodLastYear';
-    const prevYear = String(Number(year) - 1);
-
-    const [monthlyMoves, prevYearMonthlyMoves] = await Promise.all([
-      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-        [
-          ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
-          ['invoice_date', '>=', `${year}-01-01`],
-          ['invoice_date', '<=', `${year}-12-31`]
-        ],
-        ['amount_total_signed:sum', 'amount_total:sum'],
-        ['invoice_date:month', 'move_type'],
-        0, 100, 'invoice_date:month asc'
-      ]),
-      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-        [
-          ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
-          ['invoice_date', '>=', `${prevYear}-01-01`],
-          ['invoice_date', '<=', `${prevYear}-12-31`]
-        ],
-        ['amount_total_signed:sum', 'amount_total:sum'],
-        ['invoice_date:month', 'move_type'],
-        0, 100, 'invoice_date:month asc'
-      ])
-    ]);
-
-    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-    const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-    const monthlyGross = new Array(12).fill(0);
-    const monthlyReturns = new Array(12).fill(0);
-    const monthlyNet = new Array(12).fill(0);
-
-    const prevMonthlyGross = new Array(12).fill(0);
-    const prevMonthlyReturns = new Array(12).fill(0);
-    const prevMonthlyNet = new Array(12).fill(0);
-
-    const parseMonthIndex = (m) => {
-      const monthStr = m['invoice_date:month'] || '';
-      const normalizedMonth = String(monthStr).toLowerCase();
-      const numericMonth = normalizedMonth.match(/(?:^|[-/])(0?[1-9]|1[0-2])(?:[-/]|$)/);
-      return numericMonth ? Number(numericMonth[1]) - 1 : monthNames.findIndex((name, i) => normalizedMonth.includes(name) || normalizedMonth.includes(englishMonths[i]));
-    };
-
-    monthlyMoves.forEach(m => {
-      const i = parseMonthIndex(m);
-      if (i >= 0) {
-        const amt = extractMoveAmount(m);
-        if (m.move_type === 'out_refund') monthlyReturns[i] += amt;
-        else monthlyGross[i] += amt;
-      }
-    });
-
-    prevYearMonthlyMoves.forEach(m => {
-      const i = parseMonthIndex(m);
-      if (i >= 0) {
-        const amt = extractMoveAmount(m);
-        if (m.move_type === 'out_refund') prevMonthlyReturns[i] += amt;
-        else prevMonthlyGross[i] += amt;
-      }
-    });
-
-    for (let i = 0; i < 12; i++) {
-      monthlyNet[i] = Math.max(0, monthlyGross[i] - monthlyReturns[i]);
-      prevMonthlyNet[i] = Math.max(0, prevMonthlyGross[i] - prevMonthlyReturns[i]);
-    }
-
-    const calculatedTimeSeries = {
-      month: monthNames.map((label, index) => {
-        const currentSales = monthlyNet[index] || 0;
-        const previousSales = isLastYearComp
-          ? (prevMonthlyNet[index] || 0)
-          : (index > 0 ? (monthlyNet[index - 1] || 0) : (prevMonthlyNet[11] || 0));
-        return {
-          label,
-          currentSales,
-          previousSales,
-          growthPercent: percentChange(currentSales, previousSales)
-        };
-      })
-    };
-
-    // 4. Sales Reps Performance
-    const repsSales = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-      moveDomain,
-      ['amount_total_signed:sum', 'amount_total:sum', 'amount_residual_signed:sum', 'amount_residual:sum'],
-      ['invoice_user_id', 'move_type']
-    ]);
-
-    const repsById = new Map();
-    repsSales.filter(r => r.invoice_user_id && r.invoice_user_id[1]).forEach(r => {
-      const id = r.invoice_user_id[0];
-      const current = repsById.get(id) || { id, name: r.invoice_user_id[1], achieved: 0, remaining: 0, count: 0 };
-      const sign = r.move_type === 'out_refund' ? -1 : 1;
-      const amt = extractMoveAmount(r);
-      const res = extractMoveResidual(r);
-      current.achieved += sign * amt;
-      current.remaining += sign * res;
-      if (r.move_type === 'out_invoice') current.count += r.invoice_user_id_count || 0;
-      repsById.set(id, current);
-    });
-    const repsList = [...repsById.values()]
-      .map(r => {
-        const achieved = r.achieved;
-        const remaining = r.remaining;
-        const repCollected = Math.max(0, achieved - remaining);
-        // Estimate dynamic target based on past performance or fixed target scale
-        const estimatedTarget = Math.max(achieved * 1.15, 1000000);
-        const actualPercentage = estimatedTarget ? Number((achieved / estimatedTarget * 100).toFixed(1)) : 0;
-        const theoreticalPercentage = Number((actualPercentage * 0.95).toFixed(1));
-        const theoreticalGap = Number((theoreticalPercentage - actualPercentage).toFixed(1));
-        const actualGap = Number((actualPercentage - 100).toFixed(1));
-
-        return {
-          id: r.id,
-          name: r.name,
-          achieved: round2(achieved),
-          collected: round2(repCollected),
-          remaining: round2(remaining),
-          target: round2(estimatedTarget),
-          percentage: actualPercentage,
-          theoreticalPercentage,
-          theoreticalGap,
-          actualGap,
-          count: r.count,
-          kpi: actualPercentage >= 100 ? 'متفوق' : actualPercentage >= 80 ? 'محقق للهدف' : 'يحتاج متابعة'
-        };
-      })
-      .sort((a, b) => b.achieved - a.achieved);
-
-    // 5. Top Products (from invoice lines)
-    const lineDomain = [
-      ['move_id.state', '=', 'posted'],
-      ['move_id.move_type', '=', 'out_invoice'],
-      ['display_type', '=', 'product'],
-      ['date', '>=', start],
-      ['date', '<=', end]
-    ];
-    if (repId) lineDomain.push(['move_id.invoice_user_id', '=', repId]);
-    if (customerId) lineDomain.push(['move_id.partner_id', '=', customerId]);
-    if (req.query.region || req.query.city) {
-      if (req.query.query) lineDomain.push('&', ['move_id.partner_id', 'in', allowedPartnerIds], '|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
-      else lineDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
-    } else if (req.query.query) {
-      lineDomain.push('|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
-    }
-    if (productId) lineDomain.push(['product_id', '=', productId]);
-    if (categoryId) lineDomain.push(['product_id.categ_id', 'child_of', categoryId]);
-
-    const metric = String(req.query.metric || 'amount').toLowerCase();
-    const isQtyMetric = metric === 'quantity' || metric === 'qty';
-
-    const [
-      topProductsSales,
-      bottomProductsSales,
-      topProductsQty,
-      bottomProductsQty
-    ] = await Promise.all([
-      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
-        lineDomain,
-        ['price_subtotal:sum', 'quantity:sum'],
-        ['product_id'],
-        0, 10, 'price_subtotal desc'
-      ]).catch(() => []),
-      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
-        lineDomain,
-        ['price_subtotal:sum', 'quantity:sum'],
-        ['product_id'],
-        0, 10, 'price_subtotal asc'
-      ]).catch(() => []),
-      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
-        lineDomain,
-        ['price_subtotal:sum', 'quantity:sum'],
-        ['product_id'],
-        0, 10, 'quantity desc'
-      ]).catch(() => []),
-      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
-        lineDomain,
-        ['price_subtotal:sum', 'quantity:sum'],
-        ['product_id'],
-        0, 10, 'quantity asc'
-      ]).catch(() => [])
-    ]);
-
-    const formatProductItem = p => ({
-      name: p.product_id[1],
-      amount: round2(p.price_subtotal || 0),
-      quantity: round2(p.quantity || 0),
-      count: p.product_id_count || 0
-    });
-
-    const topProductsByAmount = topProductsSales
-      .filter(p => p.product_id && p.product_id[1])
-      .map(formatProductItem);
-
-    const bottomProductsByAmount = bottomProductsSales
-      .filter(p => p.product_id && p.product_id[1] && p.price_subtotal > 0)
-      .map(formatProductItem);
-
-    const topProductsByQty = topProductsQty
-      .filter(p => p.product_id && p.product_id[1])
-      .map(formatProductItem);
-
-    const bottomProductsByQty = bottomProductsQty
-      .filter(p => p.product_id && p.product_id[1] && p.quantity > 0)
-      .map(formatProductItem);
-
-    const topProducts = isQtyMetric ? topProductsByQty : topProductsByAmount;
-    const bottomProducts = isQtyMetric ? bottomProductsByQty : bottomProductsByAmount;
-
-    // 6. Regional Distribution (by Customer State) and Line Quantities
-    const allLinesDomain = [
-      ['move_id.state', '=', 'posted'],
-      ['move_id.move_type', 'in', ['out_invoice', 'out_refund']],
-      ['display_type', '=', 'product'],
-      ['date', '>=', start],
-      ['date', '<=', end]
-    ];
-    if (repId) allLinesDomain.push(['move_id.invoice_user_id', '=', repId]);
-    if (customerId) allLinesDomain.push(['move_id.partner_id', '=', customerId]);
-    if (req.query.region || req.query.city) {
-      if (req.query.query) allLinesDomain.push('&', ['move_id.partner_id', 'in', allowedPartnerIds], '|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
-      else allLinesDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
-    } else if (req.query.query) {
-      allLinesDomain.push('|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
-    }
-    if (productId) allLinesDomain.push(['product_id', '=', productId]);
-    if (categoryId) allLinesDomain.push(['product_id.categ_id', 'child_of', categoryId]);
-
-    const [partnerSalesGroup, invoicesLinesGroup, refundsLinesGroup] = await Promise.all([
-      odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-        moveDomain,
-        ['amount_total_signed:sum', 'amount_total:sum', 'amount_residual_signed:sum', 'amount_residual:sum'],
-        ['partner_id', 'move_type']
-      ]),
-      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
-        [...allLinesDomain, ['move_id.move_type', '=', 'out_invoice']],
-        ['quantity:sum'],
-        ['partner_id']
-      ]).catch(() => []),
-      odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'read_group', [
-        [...allLinesDomain, ['move_id.move_type', '=', 'out_refund']],
-        ['quantity:sum'],
-        ['partner_id']
-      ]).catch(() => [])
-    ]);
-
-    const partnerQtyMap = new Map();
-    invoicesLinesGroup.forEach(g => {
-      if (!g.partner_id) return;
-      const pid = g.partner_id[0];
-      const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0 };
-      entry.grossQty += (g.quantity || 0);
-      partnerQtyMap.set(pid, entry);
-    });
-    refundsLinesGroup.forEach(g => {
-      if (!g.partner_id) return;
-      const pid = g.partner_id[0];
-      const entry = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0 };
-      entry.returnedQty += (g.quantity || 0);
-      partnerQtyMap.set(pid, entry);
-    });
-
-    const regionalTotals = {};
-    const cityTotals = {};
-    let customerBreakdown = [];
-
-    partnerSalesGroup.forEach(ps => {
-      if (!ps.partner_id) return;
-      const pId = ps.partner_id[0];
-      const pName = ps.partner_id[1];
-      const info = partnerMap.get(pId) || { state: 'أخرى / غير محدد', city: 'غير محدد' };
-      const stateName = info.state || 'أخرى / غير محدد';
-      const cityName = info.city || 'غير محدد';
-      const sign = ps.move_type === 'out_refund' ? -1 : 1;
-      const amt = extractMoveAmount(ps);
-      const res = extractMoveResidual(ps);
-      const pSales = sign * amt;
-      const pResidual = sign * res;
-      const pCollected = pSales - pResidual;
-
-      // State aggregate
-      if (!regionalTotals[stateName]) {
-        regionalTotals[stateName] = { sales: 0, collected: 0, residual: 0, invoices: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
-      }
-      regionalTotals[stateName].sales += pSales;
-      regionalTotals[stateName].collected += pCollected;
-      regionalTotals[stateName].residual += pResidual;
-      regionalTotals[stateName].invoices += ps.move_type === 'out_invoice' ? ps.partner_id_count : 0;
-
-      // City aggregate
-      const cityKey = `${stateName} - ${cityName}`;
-      if (!cityTotals[cityKey]) {
-        cityTotals[cityKey] = { state: stateName, city: cityName, sales: 0, collected: 0, residual: 0, invoices: 0 };
-      }
-      cityTotals[cityKey].sales += pSales;
-      cityTotals[cityKey].collected += pCollected;
-      cityTotals[cityKey].residual += pResidual;
-      cityTotals[cityKey].invoices += ps.move_type === 'out_invoice' ? ps.partner_id_count : 0;
-
-      // Top customer list
-      customerBreakdown.push({
-        id: pId,
-        name: pName,
-        state: stateName,
-        city: cityName,
-        rep: 'غير محدد',
-        sales: round2(pSales),
-        collected: round2(pCollected),
-        outstanding: round2(pResidual),
-        invoices: ps.move_type === 'out_invoice' ? ps.partner_id_count : 0,
-        rate: pSales ? Number((pCollected / pSales * 100).toFixed(1)) : 0
-      });
-    });
-
-    const customersById = new Map();
-    customerBreakdown.forEach(customer => {
-      const pQty = partnerQtyMap.get(customer.id) || { grossQty: 0, returnedQty: 0 };
-      const grossQty = round2(pQty.grossQty);
-      const returnedQty = round2(pQty.returnedQty);
-      const netQty = round2(Math.max(0, grossQty - returnedQty));
-
-      const current = customersById.get(customer.id) || {
-        ...customer,
-        sales: 0,
-        collected: 0,
-        outstanding: 0,
-        invoices: 0,
-        grossQty,
-        returnedQty,
-        netQty
-      };
-      current.sales += customer.sales;
-      current.collected += customer.collected;
-      current.outstanding += customer.outstanding;
-      current.invoices += customer.invoices;
-      customersById.set(customer.id, current);
-    });
-
-    customerBreakdown = [...customersById.values()].map(customer => ({
-      ...customer,
-      sales: round2(customer.sales),
-      collected: round2(customer.collected),
-      outstanding: Math.max(0, round2(customer.outstanding)),
-      rate: customer.sales ? Number((customer.collected / customer.sales * 100).toFixed(1)) : 0
-    }));
-
-    // Sum quantities per region
-    customerBreakdown.forEach(cust => {
-      if (regionalTotals[cust.state]) {
-        regionalTotals[cust.state].grossQty += cust.grossQty || 0;
-        regionalTotals[cust.state].returnedQty += cust.returnedQty || 0;
-        regionalTotals[cust.state].netQty += cust.netQty || 0;
-      }
-    });
-
-    const regionalList = Object.entries(regionalTotals)
-      .map(([name, data]) => {
-        const rate = data.sales ? Number((data.collected / data.sales * 100).toFixed(1)) : 0;
-        return {
-          name,
-          sales: round2(data.sales),
-          collected: round2(data.collected),
-          outstanding: round2(data.residual),
-          invoices: data.invoices,
-          grossQty: round2(data.grossQty || 0),
-          returnedQty: round2(data.returnedQty || 0),
-          netQty: round2(data.netQty || 0),
-          rate
-        };
-      })
-      .sort((a, b) => b.sales - a.sales);
-
-    // 7. Recent Returns / Credit Notes (Line Level)
-    const { productCatalog, categories } = await getProductCatalog(auth);
-
-    const returnLinesDomain = [
-      ['move_id.state', '=', 'posted'],
-      ['move_id.move_type', '=', 'out_refund'],
-      ['display_type', '=', 'product'],
-      ['date', '>=', start],
-      ['date', '<=', end]
-    ];
-    if (repId) returnLinesDomain.push(['move_id.invoice_user_id', '=', repId]);
-    if (customerId) returnLinesDomain.push(['move_id.partner_id', '=', customerId]);
-    if (req.query.region || req.query.city) {
-      if (req.query.query) returnLinesDomain.push('&', ['move_id.partner_id', 'in', allowedPartnerIds], '|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
-      else returnLinesDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
-    } else if (req.query.query) {
-      returnLinesDomain.push('|', ['move_id.partner_id', 'in', matchingSearchPartnerIds], ['product_id', 'in', matchingSearchProductIds]);
-    }
-    if (productId) returnLinesDomain.push(['product_id', '=', productId]);
-    if (categoryId) returnLinesDomain.push(['product_id.categ_id', 'child_of', categoryId]);
-
-    const recentReturnLines = await odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [
-      returnLinesDomain
-    ], {
-      limit: 50,
-      order: 'date desc, id desc',
-      fields: ['id', 'move_id', 'product_id', 'quantity', 'price_subtotal', 'date', 'partner_id']
-    }).catch(() => []);
-
-    // Fetch parent credit notes to get invoice_user_id directly
-    const returnMoveIds = [...new Set(recentReturnLines.map(l => l.move_id?.[0]).filter(Boolean))];
-    const returnMoveMap = new Map();
-    if (returnMoveIds.length > 0) {
-      const parentMoves = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
-        [['id', 'in', returnMoveIds]]
-      ], {
-        fields: ['id', 'invoice_user_id'],
-        limit: returnMoveIds.length
-      }).catch(() => []);
-      (parentMoves || []).forEach(m => {
-        if (m.invoice_user_id && m.invoice_user_id[1]) {
-          returnMoveMap.set(m.id, m.invoice_user_id[1]);
-        }
-      });
-    }
-
-    let returnsList = [];
-    if (recentReturnLines.length > 0) {
-      returnsList = recentReturnLines.map((line, i) => {
-        const pId = line.partner_id ? line.partner_id[0] : null;
-        const pInfo = pId ? partnerMap.get(pId) : null;
-        const prod = productCatalog ? productCatalog.find(p => p.id === (line.product_id ? line.product_id[0] : null)) : null;
-        const moveId = line.move_id ? line.move_id[0] : null;
-        const moveRep = moveId ? returnMoveMap.get(moveId) : null;
-        return {
-          id: line.id,
-          moveId,
-          creditNote: line.move_id ? line.move_id[1] : `CN-${String(i + 1).padStart(4, '0')}`,
-          product: line.product_id ? line.product_id[1] : 'غير محدد',
-          category: prod?.categoryName || 'غير محدد',
-          customer: line.partner_id ? line.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
-          rep: moveRep || 'غير محدد',
-          region: pInfo ? pInfo.state : 'غير محدد',
-          date: line.date,
-          returnedQty: round2(line.quantity || 0),
-          returns: round2(line.price_subtotal || 0),
-          odooLink: moveId ? `${ODOO_URL}/web#id=${moveId}&model=account.move&view_type=form` : `${ODOO_URL}/web#model=account.move&view_type=list`
-        };
-      });
-    } else {
-      const recentReturns = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
-        [...moveDomain, ['move_type', '=', 'out_refund']]
-      ], {
-        limit: 25,
-        order: 'invoice_date desc, id desc',
-        fields: ['id', 'name', 'partner_id', 'invoice_user_id', 'amount_total', 'invoice_date', 'ref']
-      }).catch(() => []);
-
-      returnsList = recentReturns.map((r, i) => {
-        const pInfo = r.partner_id ? partnerMap.get(r.partner_id[0]) : null;
-        return {
-          id: r.id,
-          moveId: r.id,
-          creditNote: r.name || `CN-${String(i + 1).padStart(4, '0')}`,
-          product: r.ref || 'غير محدد',
-          category: 'غير محدد',
-          customer: r.partner_id ? r.partner_id[1] : 'غير محدد',
-          rep: r.invoice_user_id ? r.invoice_user_id[1] : 'غير محدد',
-          region: pInfo ? pInfo.state : 'غير محدد',
-          date: r.invoice_date,
-          returnedQty: 0,
-          returns: round2(r.amount_total || 0),
-          odooLink: `${ODOO_URL}/web#id=${r.id}&model=account.move&view_type=form`
-        };
-      });
-    }
-
-    // 8. Churn / Inactive Customer Warnings
-    const churnWarnings = growthAnalysis.churnWarnings;
-
-    const previousRange = comparisonRange(start, end, req.query.comparison || 'previousPeriod');
-    let comparison = null;
-    if (previousRange) {
-      const previousBaseDomain = [
-        ...moveDomain.filter((item) => Array.isArray(item) ? item[0] !== 'invoice_date' : true),
-        ['invoice_date', '>=', previousRange.start],
-        ['invoice_date', '<=', previousRange.end]
-      ];
-      const [previousInvoices, previousReturns, previousAllPosted] = await Promise.all([
-        odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-          [...previousBaseDomain, ['move_type', '=', 'out_invoice']],
-          ['amount_total_signed:sum', 'amount_total:sum', 'amount_untaxed_signed:sum', 'amount_residual_signed:sum', 'amount_residual:sum'], []
-        ]),
-        odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-          [...previousBaseDomain, ['move_type', '=', 'out_refund']],
-          ['amount_total_signed:sum', 'amount_total:sum', 'amount_untaxed_signed:sum', 'amount_residual_signed:sum', 'amount_residual:sum'], []
-        ]),
-        odooExecuteKw(auth.uid, auth.password, 'account.move', 'read_group', [
-          [...previousBaseDomain],
-          ['amount_total_signed:sum', 'amount_total:sum', 'amount_untaxed_signed:sum', 'amount_residual_signed:sum', 'amount_residual:sum'], []
-        ])
-      ]);
-      const prevInvoiceCount = previousInvoices[0]?.__count || 0;
-      const prevReturnCount = previousReturns[0]?.__count || 0;
-      const prevTotalPostedCount = previousAllPosted[0]?.__count || (prevInvoiceCount + prevReturnCount);
-      const prevRawInvoiceAmount = extractMoveAmount(previousInvoices[0]);
-      const previousReturnsAmount = extractMoveAmount(previousReturns[0]);
-
-      let previousNet = 0;
-      let previousGross = 0;
-      if (previousAllPosted[0]?.amount_total_signed !== undefined && previousAllPosted[0]?.amount_total_signed !== null) {
-        previousNet = Number(previousAllPosted[0].amount_total_signed) || 0;
-        previousGross = previousNet + previousReturnsAmount;
-      } else {
-        previousGross = prevRawInvoiceAmount;
-        previousNet = Math.max(0, previousGross - previousReturnsAmount);
-      }
-
-      const prevInvoiceResidual = extractMoveResidual(previousInvoices[0]);
-      const prevReturnResidual = extractMoveResidual(previousReturns[0]);
-      const previousOutstanding = Math.max(0, prevInvoiceResidual - prevReturnResidual);
-      const previousCollected = Math.max(0, previousNet - previousOutstanding);
-      const prevAvgInvoice = prevInvoiceCount ? round2(previousNet / prevInvoiceCount) : 0;
-      comparison = {
-        mode: req.query.comparison || 'previousPeriod',
-        start: previousRange.start,
-        end: previousRange.end,
-        kpis: {
-          gross: round2(previousGross),
-          returns: round2(previousReturnsAmount),
-          net: round2(previousNet),
-          collected: round2(previousCollected),
-          outstanding: round2(previousOutstanding),
-          invoicesCount: prevInvoiceCount,
-          returnsCount: prevReturnCount,
-          totalPostedCount: prevTotalPostedCount,
-          avgInvoice: prevAvgInvoice
-        }
-      };
-    }
-
-    // 9. Filter Dropdown Options
-    const distinctRegions = [...new Set(allPartnersList.map(p => p.state))].filter(Boolean);
-    const distinctCities = [...new Set(allPartnersList.map(p => p.city))].filter(c => c && c !== 'غير محدد');
-    const distinctReps = await getDistinctRepsFromDocuments(auth);
-    const customers = allPartnersList.map(p => ({ id: p.id, name: p.name })).filter(p => p.name);
-
-    const dateFacets = await getDateFacets(auth, 'postedInvoice');
-    const totalGrossQty = round2(regionalList.reduce((acc, r) => acc + (r.grossQty || 0), 0));
-    const totalReturnedQty = round2(regionalList.reduce((acc, r) => acc + (r.returnedQty || 0), 0));
-    const totalNetQty = round2(Math.max(0, totalGrossQty - totalReturnedQty));
-
-    const payload = {
-      status: 'success',
-      source: req.query.source || 'postedInvoice',
-      timestamp: new Date().toISOString(),
-      filters: { start, end, year },
-      kpis: {
-        gross: round2(gross),
-        returns: round2(returns),
-        net: round2(net),
-        untaxed: round2(untaxed),
-        grossQty: totalGrossQty,
-        returnsQty: totalReturnedQty,
-        netQty: totalNetQty,
-        collected: round2(collected),
-        outstanding: round2(outstanding),
-        invoicesCount: invoiceCount,
-        returnsCount: returnCount,
-        totalPostedCount: totalPostedCount,
-        collectionRate: Number(rate.toFixed(1)),
-        avgInvoice: round2(avgInvoice)
-      },
-      comparison,
-      charts: {
-        months: monthNames,
-        monthlyGross: monthlyGross.map(round2),
-        monthlyReturns: monthlyReturns.map(round2),
-        monthlyNet: monthlyNet.map(round2),
-        growthTimeSeries: calculatedTimeSeries,
-        customerGrowth: growthAnalysis.customerGrowthChart,
-        customerGrowthItems: growthAnalysis.customers,
-        churnWarnings: growthAnalysis.churnWarnings || [],
-        topProducts,
-        bottomProducts,
-        topProductsByAmount,
-        bottomProductsByAmount,
-        topProductsByQty,
-        bottomProductsByQty,
-        regional: regionalList
-      },
-      reps: repsList,
-      returns: returnsList,
-      churn: churnWarnings,
-      growthAnalysis,
-      drilldown: regionalList.map(reg => {
-        const matchingCustomers = customerBreakdown
-          .filter(c => c.state === reg.name)
-          .sort((a, b) => b.sales - a.sales);
-        return {
-          ...reg,
-          customers: matchingCustomers
-        };
-      }),
-      filterOptions: {
-        regions: distinctRegions,
-        cities: distinctCities,
-        reps: distinctReps,
-        customers,
-        categories,
-        products: productCatalog,
-        ...dateFacets
-      }
-    };
-
-    setCached(cacheKey, payload);
+    const ttl = getAdaptiveOverviewTTL(req.query);
+    setCached(cacheKey, payload, ttl);
     return res.json(payload);
   } catch (error) {
     console.error('Error fetching dashboard overview:', error);
-    return res.status(500).json({ error: error.message || 'حدث خطأ أثناء معالجة بيانات Odoo' });
+    try {
+      const auth = await getAuthCredentials(req);
+      if (auth) {
+        const cacheKey = normalizeCacheKey('overview', auth.uid, req.query);
+        const stale = getCached(cacheKey);
+        if (stale) {
+          res.setHeader('X-Cache', 'STALE-FALLBACK');
+          return res.json({
+            ...stale,
+            isStale: true,
+            warning: 'تم عرض آخر بيانات متوفرة نظراً لبطء اتصال خادم Odoo حالياً (انقر إعادة المحاولة للتحديث).'
+          });
+        }
+      }
+    } catch (_) {}
+
+    const friendlyError = sanitizeErrorMessage(error);
+    return res.status(500).json({ error: friendlyError, code: 'ODOO_SERVER_ERROR' });
   }
 });
 
-// ─────────────────────────────────────────────────────────────
-// KPI Drill-down API (Detailed Documents / Invoices / Orders)
 // ─────────────────────────────────────────────────────────────
 app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
   try {
     const auth = await getAuthCredentials(req);
     if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
 
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const cacheKey = normalizeCacheKey('drilldown', auth.uid, req.query);
+
+    if (!forceRefresh) {
+      const cached = getCached(cacheKey);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        return res.json(cached);
+      }
+    }
+    res.setHeader('X-Cache', 'MISS');
+
     const kpi = String(req.query.kpi || 'gross').trim();
     const source = String(req.query.source || 'postedInvoice').trim();
     const { start, end } = getDateRange(req.query);
 
-    // 1. Partner State & City Lookup Map
-    let partnerMap = getCached('partners_map');
-    let allPartnersList = getCached('partners_list');
-    if (!partnerMap || !allPartnersList) {
-      const rawPartners = await odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [
-        [['customer_rank', '>', 0]]
-      ], { fields: ['id', 'name', 'state_id', 'city', 'user_id', 'phone'], limit: 10000 });
-
-      partnerMap = new Map();
-      allPartnersList = [];
-      rawPartners.forEach(p => {
-        const stateName = p.state_id ? p.state_id[1].replace(/\s*\(EG\)$/i, '').trim() : 'غير محدد';
-        const partnerObj = {
-          id: p.id,
-          name: p.name,
-          state: stateName,
-          city: p.city || 'غير محدد',
-          rep: p.user_id ? p.user_id[1] : 'غير محدد',
-          phone: p.phone || ''
-        };
-        partnerMap.set(p.id, partnerObj);
-        allPartnersList.push(partnerObj);
-      });
-      setCached('partners_map', partnerMap, 30 * 60 * 1000);
-      setCached('partners_list', allPartnersList, 30 * 60 * 1000);
-    }
+    // 1. Partner State & City Lookup Map and Product Catalog (from shared cache)
+    const [{ partnerMap, allPartnersList }, { categories }] = await Promise.all([
+      getPartnersLookup(auth),
+      getProductCatalog(auth)
+    ]);
 
     const repId = asPositiveId(req.query.rep);
+    const repName = await getDistinctRepNameById(auth, repId);
     const customerId = asPositiveId(req.query.customer);
     const productId = asPositiveId(req.query.product);
-    const categoryId = asPositiveId(req.query.category);
+    const categoryId = resolveCategoryId(req.query.category, categories);
 
     let allowedPartnerIds = [];
     if (req.query.region || req.query.city) {
@@ -2231,59 +3404,534 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
       if (!allowedPartnerIds.length) allowedPartnerIds = [-1];
     }
 
-    if (source === 'salesOrder') {
-      const soDomain = [
-        ['state', 'in', ['sale', 'done']],
-        ['date_order', '>=', `${start} 00:00:00`],
-        ['date_order', '<=', `${end} 23:59:59`]
+    // -------------------------------------------------------------
+    // Customer Payments & Treasury/Bank Receipts (account.payment)
+    // Specifically for "المبالغ المحصلة / إجمالي النقدية المحصلة"
+    // In accounting, collected amounts exclusively come from account.payment
+    // regardless of whether the filter is salesOrder or postedInvoice.
+    // -------------------------------------------------------------
+    if (kpi === 'collected') {
+      const paymentDomain = [
+        ['partner_type', '=', 'customer'],
+        ['state', 'in', ['in_process', 'inprocess', 'paid', 'posted']],
+        ['date', '>=', start],
+        ['date', '<=', end]
       ];
-      if (repId) soDomain.push(['user_id', '=', repId]);
+
+      if (customerId) paymentDomain.push(['partner_id', '=', customerId]);
+      if (allowedPartnerIds.length) paymentDomain.push(['partner_id', 'in', allowedPartnerIds]);
+      if (repId) {
+        const repPartnerIds = allPartnersList.filter(p => p.repId === repId).map(p => p.id);
+        paymentDomain.push(['partner_id', 'in', repPartnerIds.length ? repPartnerIds : [-1]]);
+      }
+      if (req.query.query) {
+        const q = String(req.query.query).trim();
+        paymentDomain.push('|', ['name', 'ilike', q], ['partner_id.name', 'ilike', q]);
+      }
+
+      const validPaymentFields = await getAccountPaymentFields(auth);
+
+      const [inboundSummaryGroups, outboundSummaryGroups, settledInboundGroups, settledOutboundGroups, payments] = await Promise.all([
+        odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+          [...paymentDomain, ['payment_type', '=', 'inbound']],
+          ['amount:sum'],
+          []
+        ]).catch(err => {
+          console.warn('account.payment inbound read_group error:', err.message);
+          return [];
+        }),
+        odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+          [...paymentDomain, ['payment_type', '=', 'outbound']],
+          ['amount:sum'],
+          []
+        ]).catch(err => {
+          console.warn('account.payment outbound read_group error:', err.message);
+          return [];
+        }),
+        odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+          [...paymentDomain, ['payment_type', '=', 'inbound'], ['state', 'in', ['paid', 'posted']]],
+          ['amount:sum'],
+          []
+        ]).catch(err => {
+          console.warn('account.payment settled inbound read_group error:', err.message);
+          return null;
+        }),
+        odooExecuteKw(auth.uid, auth.password, 'account.payment', 'read_group', [
+          [...paymentDomain, ['payment_type', '=', 'outbound'], ['state', 'in', ['paid', 'posted']]],
+          ['amount:sum'],
+          []
+        ]).catch(err => {
+          console.warn('account.payment settled outbound read_group error:', err.message);
+          return null;
+        }),
+        odooExecuteKw(auth.uid, auth.password, 'account.payment', 'search_read', [
+          paymentDomain
+        ], {
+          fields: validPaymentFields,
+          limit: 15000,
+          order: 'date desc, id desc'
+        }).catch(err => {
+          console.error('account.payment search_read error:', err.message);
+          return [];
+        })
+      ]);
+
+      const dbInboundCount = Number(inboundSummaryGroups[0]?.__count) || 0;
+      const dbOutboundCount = Number(outboundSummaryGroups[0]?.__count) || 0;
+      const dbTotalCount = dbInboundCount + dbOutboundCount;
+      const dbInboundAmt = extractPaymentAmount(inboundSummaryGroups[0]);
+      const dbOutboundAmt = extractPaymentAmount(outboundSummaryGroups[0]);
+      const dbSettledInboundAmt = extractPaymentAmount(settledInboundGroups?.[0]);
+      const dbSettledOutboundAmt = extractPaymentAmount(settledOutboundGroups?.[0]);
+      const dbNetCollected = round2(dbInboundAmt - dbOutboundAmt);
+      const dbNetSettled = round2(dbSettledInboundAmt - dbSettledOutboundAmt);
+      const hasSettledSummary = Array.isArray(settledInboundGroups) && Array.isArray(settledOutboundGroups);
+
+      const validPayments = (payments || []).filter(p => {
+        const docDate = p.date ? String(p.date).split(' ')[0] : '';
+        return Boolean(docDate && docDate >= start && docDate <= end);
+      });
+
+      const records = validPayments.map((p, idx) => {
+        const pInfo = p.partner_id ? partnerMap.get(p.partner_id[0]) : null;
+        const journalName = p.journal_id ? p.journal_id[1] : 'الخزينة / البنك';
+        const rawAmt = Math.abs(Number(p.amount) || 0);
+        const isOutbound = p.payment_type === 'outbound';
+        const signedAmt = isOutbound ? -rawAmt : rawAmt;
+        const isSettled = ['paid', 'posted'].includes(String(p.state || '').toLowerCase());
+        const refNote = p.ref || p.memo || p.communication || p.payment_reference || '';
+        const stateLabel = (p.state === 'in_process' || p.state === 'inprocess')
+          ? 'قيد المعالجة (In Process)'
+          : (p.state === 'paid' ? 'مسدد / محصل (Paid)' : (p.state === 'posted' ? 'معتمد (Posted)' : (p.state || 'معتمد')));
+
+        const typeLabel = isOutbound ? `سند صرف / رد للعميل (${journalName})` : `سند قبض (${journalName})`;
+
+        return {
+          id: p.id,
+          index: idx + 1,
+          name: p.name || `PAY-${p.id}`,
+          customer: p.partner_id ? p.partner_id[1] : (pInfo ? pInfo.name : 'عميل غير محدد'),
+          rep: pInfo?.rep || 'غير محدد',
+          region: pInfo ? pInfo.state : 'غير محدد',
+          city: pInfo ? pInfo.city : 'غير محدد',
+          date: p.date ? String(p.date).split(' ')[0] : '',
+          ref: refNote,
+          amount: signedAmt,
+          paid: isSettled ? signedAmt : 0,
+          residual: isSettled ? 0 : signedAmt,
+          isRefund: isOutbound,
+          typeLabel,
+          paymentState: stateLabel,
+          paymentStatusCode: p.state || 'paid',
+          journal: journalName,
+          odooLink: `${ODOO_URL}/web#id=${p.id}&model=account.payment&view_type=form`
+        };
+      });
+
+      const totalInbound = round2(records.filter(r => !r.isRefund).reduce((sum, r) => sum + r.amount, 0));
+      const totalOutbound = round2(records.filter(r => r.isRefund).reduce((sum, r) => sum + Math.abs(r.amount), 0));
+      const netCollected = round2(totalInbound - totalOutbound);
+      const settledNetFromRecords = round2(records.reduce((sum, r) => sum + r.paid, 0));
+
+      const finalAmount = dbTotalCount > 0 ? dbNetCollected : netCollected;
+      const finalPaid = dbTotalCount > 0 && hasSettledSummary ? dbNetSettled : settledNetFromRecords;
+      const finalResidual = round2(finalAmount - finalPaid);
+      const finalCount = dbTotalCount > 0 ? dbTotalCount : records.length;
+      const finalInboundAmt = dbInboundAmt > 0 ? dbInboundAmt : totalInbound;
+      const finalOutboundAmt = dbOutboundAmt > 0 ? dbOutboundAmt : totalOutbound;
+      const finalInboundCount = dbInboundCount > 0 ? dbInboundCount : records.filter(r => !r.isRefund).length;
+      const finalOutboundCount = dbOutboundCount > 0 ? dbOutboundCount : records.filter(r => r.isRefund).length;
+
+      const drilldownResult = {
+        kpi,
+        source: 'payment',
+        sourceName: 'سندات ومدفوعات العملاء المحصلة في Odoo (Customer Payments - In Process & Paid)',
+        title: 'مدفوعات وسندات قبض العملاء المحصلة في Odoo (Customer Payments)',
+        count: finalCount,
+        totalAmount: finalAmount,
+        totalPaid: finalPaid,
+        totalInbound: finalInboundAmt,
+        totalOutbound: finalOutboundAmt,
+        inboundCount: finalInboundCount,
+        outboundCount: finalOutboundCount,
+        totalResidual: finalResidual,
+        records
+      };
+
+      if (records.length > 0 || dbTotalCount === 0) {
+        setCached(cacheKey, drilldownResult, 10 * 60 * 1000);
+      }
+      return res.json(drilldownResult);
+    }
+
+    if (source === 'salesOrder') {
+      const isReturnKpi = kpi === 'returns' || kpi === 'returnsCount';
+      if (isReturnKpi) {
+        if (req.query.salesOrderStatus === 'draft') {
+          const drilldownResult = {
+            kpi,
+            source: 'creditNote',
+            sourceName: 'إشعارات الدائن ومرتجعات المبيعات المعتمدة في Odoo',
+            title: 'لا توجد مرتجعات لعروض الأسعار والمسودات (Quotations & Drafts)',
+            count: 0,
+            totalAmount: 0,
+            totalPaid: 0,
+            totalResidual: 0,
+            records: []
+          };
+          return res.json(drilldownResult);
+        }
+        const status = String(req.query.salesOrderStatus || 'all').toLowerCase();
+        const soCustom = await getSoCustomFields(auth).catch(() => ({ rep: null }));
+        const soUtcRange = cairoUtcRange(start, end);
+        const soDomain = [
+          ['date_order', '>=', soUtcRange.from],
+          ['date_order', '<=', soUtcRange.to]
+        ];
+        if (status === 'post') soDomain.push(['state', 'in', ['sale', 'done']]);
+        else if (status === 'draft') soDomain.push(['state', 'in', ['draft', 'sent']]);
+        else soDomain.push(['state', '!=', 'cancel']);
+        if (repId) appendSalespersonFilter(soDomain, soCustom.rep, repId, repName);
+        if (customerId) soDomain.push(['partner_id', '=', customerId]);
+        else if (allowedPartnerIds.length) soDomain.push(['partner_id', 'in', allowedPartnerIds]);
+        if (productId) soDomain.push(['order_line.product_id', '=', productId]);
+        if (categoryId) soDomain.push(['order_line.product_id.categ_id', 'child_of', categoryId]);
+        if (req.query.query) {
+          const q = String(req.query.query).trim();
+          const clauses = [['name', 'ilike', q], ['partner_id.name', 'ilike', q]];
+          if (soCustom.rep?.name) clauses.push([`${soCustom.rep.name}.name`, 'ilike', q]);
+          for (let i = 0; i < clauses.length - 1; i++) soDomain.push('|');
+          clauses.forEach(clause => soDomain.push(clause));
+        }
+
+        const customRepField = soCustom.rep?.name;
+        const selectedOrders = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'search_read', [soDomain], {
+          fields: ['id', 'invoice_ids', 'order_line', 'user_id', ...(customRepField ? [customRepField] : [])],
+          limit: 5000,
+          order: 'date_order desc, id desc'
+        }).catch(() => []);
+        const orderIdsByCreditNote = new Map();
+        const ordersByInvoiceId = new Map();
+        const addCreditNoteRep = (moveId, repName) => {
+          const repNames = orderIdsByCreditNote.get(moveId) || new Set();
+          repNames.add(repName);
+          orderIdsByCreditNote.set(moveId, repNames);
+        };
+        (selectedOrders || []).forEach(order => {
+          const customRep = customRepField ? fieldValue(order[customRepField]) : null;
+          const repName = customRep?.name || 'غير محدد';
+          (order.invoice_ids || []).forEach(moveId => {
+            const linkedOrders = ordersByInvoiceId.get(moveId) || [];
+            linkedOrders.push(repName);
+            ordersByInvoiceId.set(moveId, linkedOrders);
+          });
+        });
+        const selectedOrderLineIds = [...new Set((selectedOrders || []).flatMap(order => order.order_line || []))];
+        const [linkedCreditLines, reversedCreditNotes] = await Promise.all([
+          selectedOrderLineIds.length > 0 ? odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [[
+            ['sale_line_ids', 'in', selectedOrderLineIds.slice(0, 10000)],
+            ['move_id.state', '=', 'posted'],
+            ['move_id.move_type', '=', 'out_refund'],
+            ['display_type', '=', 'product'],
+            ...(productId ? [['product_id', '=', productId]] : []),
+            ...(categoryId ? [['product_id.categ_id', 'child_of', categoryId]] : [])
+          ]], { fields: ['id', 'move_id', 'sale_line_ids', 'quantity'], limit: 20000 }).catch(() => []) : [],
+          ordersByInvoiceId.size > 0 ? odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[
+            ['reversed_entry_id', 'in', [...ordersByInvoiceId.keys()].slice(0, 5000)],
+            ['state', '=', 'posted'],
+            ['move_type', '=', 'out_refund'],
+            ...(productId ? [['invoice_line_ids.product_id', '=', productId]] : []),
+            ...(categoryId ? [['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]] : [])
+          ]], { fields: ['id', 'reversed_entry_id'], limit: 5000 }).catch(() => []) : []
+        ]);
+        const orderLines = selectedOrderLineIds.length > 0 ? await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [[
+          ['id', 'in', selectedOrderLineIds.slice(0, 10000)]
+        ]], { fields: ['id', 'order_id'], limit: 10000 }).catch(() => []) : [];
+        const repByOrderId = new Map((selectedOrders || []).map(order => {
+          const customRep = customRepField ? fieldValue(order[customRepField]) : null;
+          const repName = customRep?.name || 'غير محدد';
+          return [order.id, repName];
+        }));
+        const repByOrderLineId = new Map((orderLines || []).map(line => [line.id, repByOrderId.get(line.order_id?.[0]) || 'غير محدد']));
+        const returnQtyByMoveId = new Map();
+        (linkedCreditLines || []).forEach(line => {
+          const moveId = line.move_id?.[0];
+          returnQtyByMoveId.set(moveId, (returnQtyByMoveId.get(moveId) || 0) + Math.abs(Number(line.quantity) || 0));
+          (line.sale_line_ids || []).forEach(lineId => addCreditNoteRep(moveId, repByOrderLineId.get(lineId) || 'غير محدد'));
+        });
+        (reversedCreditNotes || []).forEach(refund => {
+          (ordersByInvoiceId.get(refund.reversed_entry_id?.[0]) || []).forEach(repName => addCreditNoteRep(refund.id, repName));
+        });
+        const linkedMoveIds = [...orderIdsByCreditNote.keys()];
+        const validMoves = linkedMoveIds.length > 0 ? await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [[
+          ['id', 'in', linkedMoveIds.slice(0, 5000)],
+          ['state', '=', 'posted'],
+          ['move_type', '=', 'out_refund'],
+          ...(productId ? [['invoice_line_ids.product_id', '=', productId]] : []),
+          ...(categoryId ? [['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]] : [])
+        ]], {
+          fields: [
+            'id', 'name', 'partner_id', 'invoice_user_id', 'invoice_date', 'date',
+            'amount_untaxed', 'amount_total', 'amount_total_signed', 'amount_residual',
+            'payment_state', 'state', 'move_type', 'ref'
+          ],
+          limit: 5000,
+          order: 'invoice_date desc, id desc'
+        }).catch(() => []) : [];
+
+        const records = validMoves.map((m, idx) => {
+          const pInfo = m.partner_id ? partnerMap.get(m.partner_id[0]) : null;
+          const rawTotal = Math.abs(Number(m.amount_total_signed !== undefined && m.amount_total_signed !== null ? m.amount_total_signed : m.amount_total) || 0);
+          const rawResidual = Math.abs(Number(m.amount_residual !== undefined && m.amount_residual !== null ? m.amount_residual : 0) || 0);
+          const paid = Math.max(0, rawTotal - rawResidual);
+
+          return {
+            id: m.id,
+            index: idx + 1,
+            name: m.name || `CN-${m.id}`,
+            customer: m.partner_id ? m.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
+            rep: [...(orderIdsByCreditNote.get(m.id) || [])].join('، ') || 'غير محدد',
+            region: pInfo ? pInfo.state : 'غير محدد',
+            city: pInfo ? pInfo.city : 'غير محدد',
+            date: m.invoice_date || (m.date ? String(m.date).split(' ')[0] : ''),
+            amount: round2(rawTotal),
+            returnedQty: round2(returnQtyByMoveId.get(m.id) || 0),
+            paid: round2(paid),
+            residual: round2(rawResidual),
+            paymentState: 'إشعار دائن (مرتجع)',
+            paymentStatusCode: 'refund',
+            isRefund: true,
+            typeLabel: 'إشعار دائن مرتجع',
+            ref: m.ref || '',
+            odooLink: `${ODOO_URL}/web#id=${m.id}&model=account.move&view_type=form`
+          };
+        });
+
+        const recAmt = round2(records.reduce((sum, r) => sum + r.amount, 0));
+        const recPaid = round2(records.reduce((sum, r) => sum + r.paid, 0));
+        const recResidual = round2(records.reduce((sum, r) => sum + r.residual, 0));
+
+        const drilldownResult = {
+          kpi,
+          source: 'creditNote',
+          sourceName: 'إشعارات الدائن ومرتجعات المبيعات المعتمدة في Odoo',
+          title: 'إشعارات الدائن ومرتجعات المبيعات المعتمدة في Odoo (Credit Notes - Out Refund)',
+          count: records.length,
+          totalAmount: recAmt,
+          totalPaid: recPaid,
+          totalResidual: recResidual,
+          records
+        };
+        if (records.length > 0) {
+          setCached(cacheKey, drilldownResult, 10 * 60 * 1000);
+        }
+        return res.json(drilldownResult);
+      }
+
+      const status = String(req.query.salesOrderStatus || 'all').toLowerCase();
+      const soCustom = await getSoCustomFields(auth).catch(() => ({ rep: null, region: null, city: null }));
+      const soUtcRange = cairoUtcRange(start, end);
+      const soDomain = [
+        ['date_order', '>=', soUtcRange.from],
+        ['date_order', '<=', soUtcRange.to]
+      ];
+      if (status === 'post') soDomain.push(['state', 'in', ['sale', 'done']]);
+      else if (status === 'draft') soDomain.push(['state', 'in', ['draft', 'sent']]);
+      else soDomain.push(['state', '!=', 'cancel']);
+      if (repId) appendSalespersonFilter(soDomain, soCustom.rep, repId, repName);
       if (customerId) soDomain.push(['partner_id', '=', customerId]);
       if (allowedPartnerIds.length) soDomain.push(['partner_id', 'in', allowedPartnerIds]);
+
+      if (productId || categoryId) {
+        const productDomain = productId ? [['product_id', '=', productId]] : [['product_id.categ_id', 'child_of', categoryId]];
+        const matchingLines = await odooExecuteKw(auth.uid, auth.password, 'sale.order.line', 'search_read', [
+          [['display_type', '=', false], ...productDomain]
+        ], { fields: ['order_id'], limit: 5000 }).catch(() => []);
+        const matchingOrderIds = [...new Set(matchingLines.map(l => l.order_id?.[0]).filter(Boolean))];
+        if (matchingOrderIds.length) {
+          soDomain.push(['id', 'in', matchingOrderIds]);
+        } else {
+          soDomain.push(['id', '=', -1]);
+        }
+      }
+
+      if (req.query.query) {
+        const q = String(req.query.query).trim();
+        const clauses = [['name', 'ilike', q], ['partner_id.name', 'ilike', q]];
+        if (soCustom.rep?.name) clauses.push([`${soCustom.rep.name}.name`, 'ilike', q]);
+        for (let i = 0; i < clauses.length - 1; i++) soDomain.push('|');
+        clauses.forEach(clause => soDomain.push(clause));
+      }
+
+      const paymentDomain = [
+        ['partner_type', '=', 'customer'],
+        ['state', 'in', ['in_process', 'inprocess', 'paid', 'posted']],
+        ['date', '>=', start],
+        ['date', '<=', end]
+      ];
+      if (customerId) paymentDomain.push(['partner_id', '=', customerId]);
+      else if (allowedPartnerIds.length) paymentDomain.push(['partner_id', 'in', allowedPartnerIds]);
+      if (repId) {
+        const repPartnerIds = allPartnersList.filter(p => p.repId === repId).map(p => p.id);
+        paymentDomain.push(['partner_id', 'in', repPartnerIds.length ? repPartnerIds : [-1]]);
+      }
+
+      const soExtraFields = [soCustom.rep?.name, soCustom.region?.name].filter(Boolean);
 
       const orders = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'search_read', [
         soDomain
       ], {
-        fields: ['id', 'name', 'partner_id', 'user_id', 'date_order', 'amount_total', 'amount_untaxed', 'state'],
-        limit: 300,
+        fields: ['id', 'name', 'partner_id', 'user_id', 'date_order', 'amount_total', 'amount_untaxed', 'state', 'invoice_ids', ...soExtraFields],
+        limit: 3000,
         order: 'date_order desc, id desc'
       });
 
-      const records = orders.map((o, idx) => {
+      const validOrders = (orders || []).filter(o => {
+        const docDate = o.date_order ? cairoDateOf(o.date_order) : '';
+        return Boolean(docDate && docDate >= start && docDate <= end);
+      });
+
+      // Fetch linked posted invoices for all valid orders
+      const allInvoiceIds = [...new Set(validOrders.flatMap(o => o.invoice_ids || []))];
+      const invoiceMap = new Map();
+      if (allInvoiceIds.length > 0) {
+        const moves = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
+          [['id', 'in', allInvoiceIds], ['state', '=', 'posted'], ['move_type', '=', 'out_invoice']]
+        ], {
+          fields: ['id', 'amount_total', 'amount_total_signed', 'amount_residual', 'payment_state'],
+          limit: 3000
+        }).catch(() => []);
+
+        (moves || []).forEach(m => {
+          const invTotal = Math.abs(Number(m.amount_total_signed !== undefined && m.amount_total_signed !== null ? m.amount_total_signed : m.amount_total) || 0);
+          const invResidual = Math.abs(Number(m.amount_residual !== undefined && m.amount_residual !== null ? m.amount_residual : 0) || 0);
+          invoiceMap.set(m.id, {
+            id: m.id,
+            total: invTotal,
+            residual: invResidual,
+            paid: Math.max(0, invTotal - invResidual)
+          });
+        });
+      }
+
+      const orderPaymentMap = new Map();
+      validOrders.forEach(o => {
+        const isDraft = o.state === 'draft' || o.state === 'sent';
+        const orderTotal = round2(o.amount_total || 0);
+
+        if (isDraft) {
+          orderPaymentMap.set(o.id, { paid: 0, residual: orderTotal, status: 'not_paid' });
+          return;
+        }
+
+        const linkedInvoices = (o.invoice_ids || []).map(id => invoiceMap.get(id)).filter(Boolean);
+
+        if (linkedInvoices.length === 0) {
+          // Confirmed order not invoiced yet -> residual is entire order amount
+          orderPaymentMap.set(o.id, { paid: 0, residual: orderTotal, status: 'not_paid' });
+        } else {
+          const invTotal = linkedInvoices.reduce((sum, inv) => sum + inv.total, 0);
+          const invResidual = linkedInvoices.reduce((sum, inv) => sum + inv.residual, 0);
+          const invPaid = Math.max(0, invTotal - invResidual);
+          const uninvoicedPortion = Math.max(0, orderTotal - invTotal);
+
+          const paid = round2(Math.min(orderTotal, invPaid));
+          const residual = round2(Math.max(0, invResidual + uninvoicedPortion));
+          const status = residual === 0 ? 'paid' : (paid > 0 ? 'partial' : 'not_paid');
+
+          orderPaymentMap.set(o.id, { paid, residual, status });
+        }
+      });
+
+      let records = validOrders.map((o, idx) => {
         const pInfo = o.partner_id ? partnerMap.get(o.partner_id[0]) : null;
+        const stateLabels = {
+          sale: 'أمر بيع معتمد',
+          done: 'أمر بيع مكتمل',
+          draft: 'مسودة',
+          sent: 'عرض سعر مرسل',
+          cancel: 'ملغي'
+        };
+        const isDraft = o.state === 'draft' || o.state === 'sent';
+        const payInfo = orderPaymentMap.get(o.id) || { paid: 0, residual: round2(o.amount_total || 0), status: isDraft ? 'not_paid' : 'paid' };
+
+        let paymentStatusCode = payInfo.status || 'paid';
+        let paymentState = stateLabels[o.state] || 'معتمد';
+        if (isDraft) {
+          paymentStatusCode = 'not_paid';
+          paymentState = 'عرض سعر';
+        } else if (payInfo.residual > 0 && payInfo.paid > 0) {
+          paymentStatusCode = 'partial';
+          paymentState = 'سداد جزئي';
+        } else if (payInfo.residual > 0) {
+          paymentStatusCode = 'not_paid';
+          paymentState = 'غير محصل';
+        } else {
+          paymentStatusCode = 'paid';
+          paymentState = 'محصل بالكامل';
+        }
+
         return {
           id: o.id,
           index: idx + 1,
           name: o.name,
-          customer: o.partner_id ? o.partner_id[1] : 'غير محدد',
-          rep: o.user_id ? o.user_id[1] : 'غير محدد',
-          region: pInfo ? pInfo.state : 'غير محدد',
-          city: pInfo ? pInfo.city : 'غير محدد',
-          date: o.date_order ? o.date_order.split(' ')[0] : '',
+          customer: o.partner_id ? o.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
+          rep: soCustom.rep ? fieldValue(o[soCustom.rep.name]).name : 'غير محدد',
+          region: soCustom.region ? fieldValue(o[soCustom.region.name]).name : (pInfo ? pInfo.state : 'غير محدد'),
+          city: soCustom.region ? fieldValue(o[soCustom.region.name]).name : (pInfo ? pInfo.city : 'غير محدد'),
+          date: o.date_order ? cairoDateOf(o.date_order) : '',
           amount: round2(o.amount_total || 0),
-          paid: round2(o.amount_total || 0),
-          residual: 0,
-          paymentState: 'معتمد',
-          paymentStatusCode: 'paid',
+          paid: payInfo.paid,
+          residual: payInfo.residual,
+          paymentState,
+          paymentStatusCode,
           isRefund: false,
-          typeLabel: 'أمر بيع',
+          typeLabel: isDraft ? 'عرض سعر' : 'أمر بيع',
           odooLink: `${ODOO_URL}/web#id=${o.id}&model=sale.order&view_type=form`
         };
       });
 
-      return res.json({
+      if (kpi === 'outstanding') {
+        records = records.filter(r => r.residual > 0);
+      }
+
+      records.forEach((r, idx) => { r.index = idx + 1; });
+
+      const soTitleMap = {
+        gross: 'إجمالي أوامر البيع',
+        invoices: 'عدد أوامر البيع',
+        net: 'صافي أوامر البيع',
+        outstanding: 'أوامر البيع غير المحصلة',
+        avgInvoice: 'أوامر البيع واحتساب متوسط أمر البيع'
+      };
+
+      const finalAmount = kpi === 'outstanding'
+        ? round2(records.reduce((sum, r) => sum + r.residual, 0))
+        : round2(records.reduce((sum, r) => sum + r.amount, 0));
+      const finalCount = records.length;
+      const totalResidual = round2(records.reduce((sum, r) => sum + r.residual, 0));
+      const totalPaid = round2(records.reduce((sum, r) => sum + r.paid, 0));
+      const computedAvg = finalCount > 0 ? round2(finalAmount / finalCount) : 0;
+
+      const drilldownResult = {
         kpi,
         source,
-        title: 'أوامر البيع المعتمدة',
-        count: records.length,
-        totalAmount: round2(records.reduce((sum, r) => sum + r.amount, 0)),
-        totalPaid: round2(records.reduce((sum, r) => sum + r.amount, 0)),
-        totalResidual: 0,
+        title: soTitleMap[kpi] || 'أوامر البيع',
+        count: finalCount,
+        totalAmount: finalAmount,
+        totalPaid,
+        totalResidual,
+        avgInvoice: computedAvg,
         records
-      });
+      };
+      if (records.length > 0) {
+        setCached(cacheKey, drilldownResult, 10 * 60 * 1000);
+      }
+      return res.json(drilldownResult);
     }
 
     // Invoices and Refunds (account.move)
+    const moveCustom = await getMoveCustomFields(auth).catch(() => ({ rep: null }));
     const moveDomain = [
       ['state', '=', 'posted'],
       ['invoice_date', '>=', start],
@@ -2291,40 +3939,50 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
     ];
 
     let title = 'فواتير المبيعات المعتمدة';
-    if (kpi === 'gross' || kpi === 'invoices') {
+    if (kpi === 'gross') {
       moveDomain.push(['move_type', '=', 'out_invoice']);
       title = 'فواتير المبيعات المعتمدة (Posted Invoices)';
+    } else if (kpi === 'invoices') {
+      moveDomain.push(['move_type', 'in', ['out_invoice', 'out_refund']]);
+      title = 'إجمالي فواتير البيع والمرتجعات المرحّلة (عدد الحركات المعتمدة - Posted)';
     } else if (kpi === 'returns' || kpi === 'returnsCount') {
       moveDomain.push(['move_type', '=', 'out_refund']);
-      title = 'إشعارات الخصم والمرتجعات (Credit Notes)';
-    } else if (kpi === 'net' || kpi === 'avgInvoice') {
+      title = 'إشعارات الدائن ومرتجعات المبيعات المعتمدة في Odoo (Credit Notes - Out Refund)';
+    } else if (kpi === 'avgInvoice') {
+      moveDomain.push(['move_type', '=', 'out_invoice']);
+      title = 'فواتير المبيعات المعتمدة واحتساب متوسط الفاتورة';
+    } else if (kpi === 'net') {
       moveDomain.push(['move_type', 'in', ['out_invoice', 'out_refund']]);
       title = 'صافي مبيعات الفواتير والمرتجعات';
     } else if (kpi === 'outstanding') {
       moveDomain.push(['move_type', 'in', ['out_invoice', 'out_refund']], ['amount_residual', '>', 0]);
       title = 'الفواتير ذات الأرصدة والمديونية القائمة (Unpaid Residual)';
-    } else if (kpi === 'collected') {
-      moveDomain.push(['move_type', '=', 'out_invoice'], ['payment_state', 'in', ['paid', 'in_payment', 'partial']]);
-      title = 'الفواتير المحصلة والمسددة (Collected Invoices)';
     } else {
       moveDomain.push(['move_type', 'in', ['out_invoice', 'out_refund']]);
     }
 
-    if (repId) moveDomain.push(['invoice_user_id', '=', repId]);
+    if (repId) appendSalespersonFilter(moveDomain, moveCustom.rep, repId, repName);
     if (customerId) moveDomain.push(['partner_id', '=', customerId]);
     if (productId) moveDomain.push(['invoice_line_ids.product_id', '=', productId]);
     if (categoryId) moveDomain.push(['invoice_line_ids.product_id.categ_id', 'child_of', categoryId]);
     if (allowedPartnerIds.length) moveDomain.push(['partner_id', 'in', allowedPartnerIds]);
+    if (req.query.query) {
+      const q = String(req.query.query).trim();
+      const clauses = [['name', 'ilike', q], ['partner_id.name', 'ilike', q]];
+      if (moveCustom.rep?.name) clauses.push([`${moveCustom.rep.name}.name`, 'ilike', q]);
+      for (let i = 0; i < clauses.length - 1; i++) moveDomain.push('|');
+      clauses.forEach(clause => moveDomain.push(clause));
+    }
 
     const moves = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'search_read', [
       moveDomain
     ], {
       fields: [
         'id', 'name', 'partner_id', 'invoice_user_id', 'invoice_date', 'date',
-        'amount_untaxed', 'amount_total', 'amount_total_signed', 'amount_residual', 'amount_residual_signed',
-        'payment_state', 'state', 'move_type', 'ref'
+        'amount_untaxed', 'amount_total', 'amount_total_signed', 'amount_residual',
+        'payment_state', 'state', 'move_type', 'ref', ...(moveCustom.rep?.name ? [moveCustom.rep.name] : [])
       ],
-      limit: 300,
+      limit: 3000,
       order: 'invoice_date desc, id desc'
     });
 
@@ -2336,51 +3994,102 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
       reversed: 'مردود / معكوس'
     };
 
-    const records = moves.map((m, idx) => {
+    const validMoves = (moves || []).filter(m => {
+      const docDate = m.invoice_date || (m.date ? String(m.date).split(' ')[0] : '');
+      return Boolean(docDate && docDate >= start && docDate <= end);
+    });
+
+    const records = validMoves.map((m, idx) => {
       const pInfo = m.partner_id ? partnerMap.get(m.partner_id[0]) : null;
       const isRefund = m.move_type === 'out_refund';
       const rawTotal = Math.abs(Number(m.amount_total_signed !== undefined && m.amount_total_signed !== null ? m.amount_total_signed : m.amount_total) || 0);
-      const rawResidual = Math.abs(Number(m.amount_residual_signed !== undefined && m.amount_residual_signed !== null ? m.amount_residual_signed : m.amount_residual) || 0);
-      const paid = Math.max(0, rawTotal - rawResidual);
+      const rawResidual = Math.abs(Number(m.amount_residual !== undefined && m.amount_residual !== null ? m.amount_residual : 0) || 0);
+      
+      const isPaidOrInPayment = ['paid', 'in_payment', 'inpayment', 'reversed'].includes(m.payment_state) || rawResidual === 0;
+      const paid = isPaidOrInPayment ? rawTotal : Math.max(0, rawTotal - rawResidual);
+      const residual = Math.max(0, rawTotal - paid);
+
+      const statusLabel = isRefund
+        ? (paymentStateLabels[m.payment_state] || (isPaidOrInPayment ? 'مردود / مسوى (Paid)' : 'رصيد دائن قائم للعميل'))
+        : (paymentStateLabels[m.payment_state] || m.payment_state || 'غير محدد');
+
+      const customRep = moveCustom.rep?.name ? fieldValue(m[moveCustom.rep.name]) : null;
 
       return {
         id: m.id,
         index: idx + 1,
         name: m.name || `DOC-${m.id}`,
-        customer: m.partner_id ? m.partner_id[1] : 'غير محدد',
-        rep: m.invoice_user_id ? m.invoice_user_id[1] : 'غير محدد',
+        customer: m.partner_id ? m.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
+        rep: customRep?.name || 'غير محدد',
         region: pInfo ? pInfo.state : 'غير محدد',
         city: pInfo ? pInfo.city : 'غير محدد',
         date: m.invoice_date || m.date || '',
         ref: m.ref || '',
         amount: round2(rawTotal),
         paid: round2(paid),
-        residual: round2(rawResidual),
+        residual: round2(residual),
         isRefund,
         typeLabel: isRefund ? 'إشعار خصم (مرتجع)' : 'فاتورة مبيعات',
-        paymentState: paymentStateLabels[m.payment_state] || m.payment_state || 'غير محدد',
+        paymentState: statusLabel,
         paymentStatusCode: m.payment_state || 'unknown',
         odooLink: `${ODOO_URL}/web#id=${m.id}&model=account.move&view_type=form`
       };
     });
 
-    const netAmount = round2(records.reduce((sum, r) => sum + (r.isRefund ? -r.amount : r.amount), 0));
-    const totalPaid = round2(records.reduce((sum, r) => sum + (r.isRefund ? 0 : r.paid), 0));
-    const totalResidual = round2(records.reduce((sum, r) => sum + (r.isRefund ? 0 : r.residual), 0));
+    let recordsFiltered = records;
+    if (kpi === 'outstanding') {
+      recordsFiltered = records.filter(r => r.residual > 0);
+    }
+    recordsFiltered.forEach((r, idx) => { r.index = idx + 1; });
 
-    res.json({
+    let finalAmount = 0;
+    let finalPaid = 0;
+    let finalResidual = 0;
+
+    if (kpi === 'returns' || kpi === 'returnsCount') {
+      finalAmount = round2(recordsFiltered.reduce((sum, r) => sum + r.amount, 0));
+      finalPaid = round2(recordsFiltered.reduce((sum, r) => sum + r.paid, 0));
+      finalResidual = round2(Math.max(0, finalAmount - finalPaid));
+    } else if (kpi === 'gross' || kpi === 'invoices' || kpi === 'avgInvoice') {
+      finalAmount = round2(recordsFiltered.filter(r => !r.isRefund).reduce((sum, r) => sum + r.amount, 0));
+      finalPaid = round2(recordsFiltered.filter(r => !r.isRefund).reduce((sum, r) => sum + r.paid, 0));
+      finalResidual = round2(recordsFiltered.filter(r => !r.isRefund).reduce((sum, r) => sum + r.residual, 0));
+    } else if (kpi === 'net') {
+      finalAmount = round2(recordsFiltered.reduce((sum, r) => sum + (r.isRefund ? -r.amount : r.amount), 0));
+      finalPaid = round2(recordsFiltered.reduce((sum, r) => sum + (r.isRefund ? -r.paid : r.paid), 0));
+      finalResidual = round2(recordsFiltered.reduce((sum, r) => sum + (r.isRefund ? -r.residual : r.residual), 0));
+    } else if (kpi === 'outstanding') {
+      finalAmount = round2(recordsFiltered.reduce((sum, r) => sum + r.residual, 0));
+      finalResidual = finalAmount;
+      finalPaid = 0;
+    } else {
+      finalAmount = round2(recordsFiltered.reduce((sum, r) => sum + (r.isRefund ? -r.amount : r.amount), 0));
+      finalPaid = round2(recordsFiltered.reduce((sum, r) => sum + r.paid, 0));
+      finalResidual = round2(recordsFiltered.reduce((sum, r) => sum + r.residual, 0));
+    }
+
+    const finalCount = recordsFiltered.length;
+    const computedAvg = finalCount > 0 ? round2(finalAmount / finalCount) : 0;
+
+    const drilldownResult = {
       kpi,
       source,
       title,
-      count: records.length,
-      totalAmount: netAmount,
-      totalPaid,
-      totalResidual,
-      records
-    });
+      count: finalCount,
+      totalAmount: finalAmount,
+      totalPaid: finalPaid,
+      totalResidual: finalResidual,
+      avgInvoice: computedAvg,
+      records: recordsFiltered
+    };
+    if (records.length > 0) {
+      setCached(cacheKey, drilldownResult, 10 * 60 * 1000);
+    }
+    res.json(drilldownResult);
   } catch (err) {
     console.error('Error in kpi-drilldown:', err.message);
-    res.status(500).json({ error: err.message || 'فشل جلب تفاصيل القيود' });
+    const friendlyError = sanitizeErrorMessage(err);
+    res.status(500).json({ error: friendlyError, code: 'DRILLDOWN_ERROR' });
   }
 });
 

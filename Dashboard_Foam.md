@@ -15,85 +15,406 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      /* ─── Premium 3D Glassmorphism Dark Mode ─── */
-      --ks-kinpaku: #4F46E5;        /* Deep Indigo */
-      --ks-kinpaku-rich: #6366F1;   /* Vibrant Indigo */
-      --ks-patina: #0EA5E9;         /* Sky Blue */
-      --ks-patina-deep: #0284C7;
+      /* ─── Premium Executive Dark Mode ─── */
+      --ks-kinpaku: #6366F1;        /* Vibrant Indigo */
+      --ks-kinpaku-rich: #818CF8;   /* Light Indigo */
+      --ks-patina: #38BDF8;         /* Sky Blue */
+      --ks-patina-deep: #0EA5E9;
       
-      --ks-lacquer: #0f111a;        /* Very dark navy background */
-      --ks-lacquer-deep: rgba(15, 17, 26, 0.75); /* Glassy Header */
-      --ks-raised: rgba(30, 33, 43, 0.65);       /* Glassy Cards */
-      --ks-graphite: rgba(45, 49, 63, 0.8);      /* Secondary Glass */
-      --ks-graphite-2: #334155;                  /* Solid border bases */
+      --ks-lacquer: #0B0F19;        /* Deep Obsidian background */
+      --ks-lacquer-deep: #111827;   /* Slate-900 for Header / Nav */
+      --ks-raised: #151E2E;         /* Solid Slate-850 Cards */
+      --ks-graphite: #1E293B;       /* Slate-800 Secondary Surfaces */
+      --ks-graphite-2: #334155;     /* Slate-700 Borders */
       
-      --ks-champagne: #F8FAFC;      /* Primary text */
-      --ks-text-warm: #E2E8F0;      /* Secondary text */
-      --ks-text-muted: #94A3B8;     /* Muted text */
+      --ks-champagne: #F8FAFC;      /* Slate-50 Primary Text */
+      --ks-text-warm: #E2E8F0;      /* Slate-200 Body Text */
+      --ks-text-muted: #94A3B8;     /* Slate-400 Muted Text */
       
-      --ks-rule: rgba(255, 255, 255, 0.1);
-      --ks-rule-strong: rgba(255, 255, 255, 0.2);
+      --ks-rule: rgba(255, 255, 255, 0.08);
+      --ks-rule-strong: rgba(255, 255, 255, 0.16);
       
       --ks-warning: #EF4444;
       --ks-success: #10B981;
       
-      /* 3D Shadows & Highlights */
-      --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255,255,255,0.1);
-      --card-shadow-hover: 0 12px 48px 0 rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255,255,255,0.2), 0 0 0 1px var(--ks-kinpaku-rich);
+      --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      --card-shadow-hover: 0 12px 32px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.4);
       
       --bg: var(--ks-lacquer);
       --bg-card: var(--ks-raised);
       --bg-card2: var(--ks-graphite);
       --border: var(--ks-rule);
-      --border2: var(--ks-rule);
+      --border2: var(--ks-rule-strong);
       --text: var(--ks-text-warm);
       --text2: var(--ks-champagne);
       --text3: var(--ks-text-muted);
       
-      --blue: var(--ks-kinpaku);
-      --cyan: var(--ks-patina);
-      --green: var(--ks-success);
-      --red: var(--ks-warning);
-      --amber: var(--ks-kinpaku-rich);
-      --purple: #8B5CF6;
-      --teal: var(--ks-patina);
+      --blue: #6366F1;
+      --cyan: #38BDF8;
+      --green: #10B981;
+      --red: #EF4444;
+      --amber: #F59E0B;
+      --purple: #A855F7;
+      --teal: #14B8A6;
+
+      /* ─── 100% Solid Opaque DDL / Select Styles (Dark Mode) ─── */
+      --ddl-bg: #151E2E;
+      --ddl-surface: #1E293B;
+      --ddl-border: #334155;
+      --ddl-border-focus: #6366F1;
+      --ddl-text: #F8FAFC;
+      --ddl-text-muted: #94A3B8;
+      --ddl-hover: #26334D;
+      --ddl-selected: #312E81;
+      --ddl-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px #334155;
     }
 
     [data-theme="light"] {
-      /* ─── Premium 3D Neumorphism Light Mode ─── */
-      --ks-kinpaku: #4F46E5;
+      /* ─── High-End Executive Light Theme (Clean, Crisp, Professional) ─── */
+      --ks-kinpaku: #4F46E5;        /* Premium Indigo */
       --ks-kinpaku-rich: #4338CA;
-      --ks-patina: #0EA5E9;
+      --ks-patina: #0284C7;         /* Sky Blue */
       --ks-patina-deep: #0369A1;
       
-      --ks-lacquer: #E0E5EC;        /* Neumorphic grayish base */
-      --ks-lacquer-deep: rgba(224, 229, 236, 0.85);
-      --ks-raised: rgba(230, 235, 240, 0.6);
-      --ks-graphite: rgba(240, 243, 248, 0.8);
-      --ks-graphite-2: #CBD5E1;
+      --ks-lacquer: #F8FAFC;        /* Luminous Slate-50 background: Clean, bright, airy! */
+      --ks-lacquer-deep: #FFFFFF;   /* Crisp white Header & Dialogs */
+      --ks-raised: #FFFFFF;         /* Solid pure white cards: zero muddy grey! */
+      --ks-graphite: #F1F5F9;       /* Slate-100 secondary panels */
+      --ks-graphite-2: #E2E8F0;     /* Slate-200 borders */
       
-      --ks-champagne: #0F172A;
-      --ks-text-warm: #1E293B;
-      --ks-text-muted: #64748B;
+      --ks-champagne: #0F172A;      /* Slate-900 ultra-high contrast headings */
+      --ks-text-warm: #1E293B;      /* Slate-800 crisp body text */
+      --ks-text-muted: #64748B;     /* Slate-500 clearly readable secondary text */
       
-      --ks-rule: rgba(255, 255, 255, 0.5);
-      --ks-rule-strong: rgba(0, 0, 0, 0.1);
+      --ks-rule: #E2E8F0;           /* Clean 1px solid card borders */
+      --ks-rule-strong: #CBD5E1;    /* Slate-300 borders */
       
       --ks-warning: #DC2626;
-      --ks-success: #059669;
+      --ks-success: #16A34A;
       
-      /* Neumorphic 3D Light Shadows */
-      --card-shadow: 9px 9px 16px rgba(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.5), inset 0 1px 1px rgba(255,255,255,1);
-      --card-shadow-hover: 12px 12px 20px rgba(163,177,198,0.7), -12px -12px 20px rgba(255,255,255, 0.6), inset 0 1px 2px rgba(255,255,255,1);
+      /* Crisp Modern Elevation Shadows */
+      --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03), 0 0 0 1px #E2E8F0;
+      --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04), 0 0 0 1px #CBD5E1;
 
       --bg: var(--ks-lacquer);
       --bg-card: var(--ks-raised);
       --bg-card2: var(--ks-graphite);
       --border: var(--ks-rule);
-      --border2: var(--ks-rule);
+      --border2: var(--ks-rule-strong);
       --text: var(--ks-text-warm);
       --text2: var(--ks-champagne);
       --text3: var(--ks-text-muted);
+
+      --blue: #2563EB;
+      --cyan: #0284C7;
+      --green: #16A34A;
+      --red: #DC2626;
+      --amber: #D97706;
+      --purple: #7C3AED;
+      --teal: #0D9488;
+
+      /* ─── 100% Solid Opaque DDL / Select Styles (Light Mode) ─── */
+      --ddl-bg: #FFFFFF;
+      --ddl-surface: #F8FAFC;
+      --ddl-border: #CBD5E1;
+      --ddl-border-focus: #4F46E5;
+      --ddl-text: #0F172A;
+      --ddl-text-muted: #64748B;
+      --ddl-hover: #F1F5F9;
+      --ddl-selected: #EEF2FF;
+      --ddl-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05), 0 0 0 1px #CBD5E1;
+    }
+
+    [data-theme="light"] body {
+      background: #F8FAFC !important;
+      color: #1E293B !important;
+    }
+    [data-theme="light"] .header {
+      background: #FFFFFF !important;
+      border-bottom: 1px solid #E2E8F0 !important;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+    }
+    [data-theme="light"] .filter-bar {
+      background: #FFFFFF !important;
+      border-bottom: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .logo-title {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .logo-sub {
+      color: #64748B !important;
+    }
+    [data-theme="light"] .user-badge {
+      background: #F1F5F9 !important;
+      border: 1px solid #CBD5E1 !important;
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .logout-btn {
+      background: #FFFFFF !important;
+      border: 1px solid #CBD5E1 !important;
+      color: #475569 !important;
+    }
+    [data-theme="light"] .theme-btn {
+      background: #F1F5F9 !important;
+      border: 1px solid #CBD5E1 !important;
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .kpi-card,
+    [data-theme="light"] .chart-card,
+    [data-theme="light"] .table-card,
+    [data-theme="light"] .reps-card,
+    [data-theme="light"] .brd-panel,
+    [data-theme="light"] .returns-table-card {
+      background: #FFFFFF !important;
+      border: 1px solid #E2E8F0 !important;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03) !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    [data-theme="light"] .kpi-card:hover,
+    [data-theme="light"] .chart-card:hover,
+    [data-theme="light"] .reps-card:hover,
+    [data-theme="light"] .brd-panel:hover {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04) !important;
+      border-color: #CBD5E1 !important;
+    }
+    [data-theme="light"] .kpi-title,
+    [data-theme="light"] .section-title,
+    [data-theme="light"] .chart-title,
+    [data-theme="light"] .panel-title {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .kpi-value {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .kpi-sub {
+      color: #64748B !important;
+    }
+    [data-theme="light"] .kpi-full {
+      color: #475569 !important;
+    }
+    [data-theme="light"] .kpi-icon {
+      background: #F1F5F9 !important;
+      border-color: #CBD5E1 !important;
+    }
+    [data-theme="light"] .kpi-extra span {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .region-mini {
+      background: #FFFFFF !important;
+      border: 1px solid #E2E8F0 !important;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+    }
+    [data-theme="light"] .region-mini-name {
+      color: #0F172A !important;
+      font-weight: 700 !important;
+    }
+    [data-theme="light"] .region-mini-val {
+      color: #334155 !important;
+      font-weight: 600 !important;
+    }
+    [data-theme="light"] .chart-detail-card {
+      background: #F8FAFC !important;
+      border: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .chart-detail-title {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .chart-detail-label {
+      color: #64748B !important;
+    }
+    [data-theme="light"] .chart-detail-value {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .churn-item {
+      background: #F8FAFC !important;
+      border: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .churn-item-name {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .churn-item-date {
+      color: #64748B !important;
+    }
+    [data-theme="light"] .date-tabs,
+    [data-theme="light"] .tab-group {
+      background: #F1F5F9 !important;
+      border: 1px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] .date-tab,
+    [data-theme="light"] .tab-btn {
+      color: #475569 !important;
+    }
+    [data-theme="light"] .date-tab.active {
+      background: #4F46E5 !important;
+      color: #FFFFFF !important;
+    }
+    [data-theme="light"] .tab-btn.active-top {
+      background: #2563EB !important;
+      color: #FFFFFF !important;
+    }
+    [data-theme="light"] .tab-btn.active-bot {
+      background: #DC2626 !important;
+      color: #FFFFFF !important;
+    }
+    [data-theme="light"] .toggle-wrap {
+      background: #FFFFFF !important;
+      border: 1px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] .btn-excel,
+    [data-theme="light"] .tbl-btn {
+      background: #FFFFFF !important;
+      color: #0F172A !important;
+      border: 1px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] .btn-excel:hover,
+    [data-theme="light"] .tbl-btn:hover {
+      background: #F1F5F9 !important;
+      border-color: #4F46E5 !important;
+      color: #4F46E5 !important;
+    }
+    [data-theme="light"] .tbl-export-btn {
+      background: #EEF2FF !important;
+      border: 1px solid #C7D2FE !important;
+      color: #4338CA !important;
+    }
+    [data-theme="light"] .tbl-export-btn:hover {
+      background: #4F46E5 !important;
+      color: #FFFFFF !important;
+    }
+    [data-theme="light"] .table-toolbar,
+    [data-theme="light"] .returns-toolbar {
+      background: #FFFFFF !important;
+      border-bottom: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] #drillTable thead th,
+    [data-theme="light"] .rep-table thead tr,
+    [data-theme="light"] .rep-table th,
+    [data-theme="light"] .returns-table thead tr,
+    [data-theme="light"] .returns-table th,
+    [data-theme="light"] .matrix th {
+      background: #F8FAFC !important;
+      color: #475569 !important;
+      border-bottom: 2px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] #drillTable td,
+    [data-theme="light"] .rep-table td,
+    [data-theme="light"] .returns-table td,
+    [data-theme="light"] .matrix td {
+      border-bottom: 1px solid #F1F5F9 !important;
+      color: #1E293B !important;
+    }
+    [data-theme="light"] #drillTable tbody tr:hover,
+    [data-theme="light"] .rep-table tbody tr:hover,
+    [data-theme="light"] .returns-table tbody tr:hover {
+      background: #F8FAFC !important;
+    }
+    [data-theme="light"] tbody tr.level-state {
+      background: #EEF2F6 !important;
+      color: #0F172A !important;
+    }
+    [data-theme="light"] tbody tr.level-city {
+      background: #F8FAFC !important;
+      color: #1E293B !important;
+    }
+    [data-theme="light"] tbody tr.level-rep {
+      background: #F0F4FF !important;
+      color: #312E81 !important;
+    }
+    [data-theme="light"] tbody tr.level-cust {
+      background: #FFFFFF !important;
+      color: #334155 !important;
+    }
+    [data-theme="light"] .row-name.state {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .row-name.city {
+      color: #1E293B !important;
+    }
+    [data-theme="light"] .row-name.rep {
+      color: #4338CA !important;
+    }
+    [data-theme="light"] .rep-table .rep-name {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] .rep-table .rep-region {
+      color: #64748B !important;
+    }
+    [data-theme="light"] .rep-table .rep-rank {
+      color: #4F46E5 !important;
+    }
+    [data-theme="light"] .rep-table .rep-value {
+      color: #2563EB !important;
+    }
+    [data-theme="light"] .rep-table .rep-detail-row {
+      background: #F8FAFC !important;
+    }
+    [data-theme="light"] .rep-table .rep-detail-card {
+      background: #FFFFFF !important;
+      border: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .rep-table .rep-detail-label {
+      color: #64748B !important;
+    }
+    [data-theme="light"] .rep-table .rep-detail-value {
+      color: #0F172A !important;
+    }
+    [data-theme="light"] tfoot tr,
+    [data-theme="light"] .table-legend {
+      background: #F8FAFC !important;
+      border-top: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .modal-container {
+      background: #FFFFFF !important;
+      border: 1px solid #CBD5E1 !important;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+    }
+    [data-theme="light"] .modal-header {
+      background: #F8FAFC !important;
+      border-bottom: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .modal-table th {
+      background: #F1F5F9 !important;
+      color: #0F172A !important;
+      border-bottom: 1px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] .modal-table td {
+      border-bottom: 1px solid #F1F5F9 !important;
+      color: #1E293B !important;
+    }
+    [data-theme="light"] .modal-stat-card {
+      background: #F8FAFC !important;
+      border: 1px solid #E2E8F0 !important;
+    }
+    [data-theme="light"] .matrix-comp-tabs {
+      background: #F1F5F9 !important;
+      border: 1px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] .matrix-tab-btn {
+      color: #475569 !important;
+    }
+    [data-theme="light"] .matrix-tab-btn.active {
+      background: #4F46E5 !important;
+      color: #FFFFFF !important;
+      border-color: #4F46E5 !important;
+    }
+    [data-theme="light"] .ss-option-item.cat-item.cat-root {
+      background: #EEF2F6 !important;
+      color: #312E81 !important;
+      border-top: 1px solid #CBD5E1 !important;
+    }
+    [data-theme="light"] .cat-item.cat-root .cat-name-text {
+      color: #1E1B4B !important;
+    }
+    [data-theme="light"] .cat-badge.root {
+      background: rgba(79, 70, 229, 0.1) !important;
+      color: #4338CA !important;
+      border: 1px solid rgba(79, 70, 229, 0.3) !important;
+    }
+    [data-theme="light"] .cat-badge.sub {
+      background: rgba(2, 132, 199, 0.1) !important;
+      color: #0369A1 !important;
+      border: 1px solid rgba(2, 132, 199, 0.25) !important;
     }
 
     html {
@@ -199,6 +520,266 @@
       color: var(--ks-text-muted); font-size: 13px; pointer-events: none;
     }
 
+    /* Searchable Select Custom Component — 100% Solid Opaque (No Transparency) */
+    .ss-wrapper {
+      position: relative;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .ss-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: var(--ddl-surface) !important;
+      border: 1px solid var(--ddl-border) !important;
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: var(--ddl-text) !important;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      min-width: 140px;
+      max-width: 220px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      user-select: none;
+      opacity: 1 !important;
+    }
+    .ss-trigger:hover, .ss-wrapper.open .ss-trigger {
+      border-color: var(--ddl-border-focus) !important;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+    }
+    .ss-trigger-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ddl-text) !important;
+    }
+    .ss-arrow {
+      font-size: 9px;
+      color: var(--ddl-text-muted) !important;
+      transition: transform 0.2s;
+    }
+    .ss-wrapper.open .ss-arrow {
+      transform: rotate(180deg);
+    }
+    .ss-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      min-width: 250px;
+      max-width: 360px;
+      background: var(--ddl-bg) !important;
+      background-color: var(--ddl-bg) !important;
+      border: 1px solid var(--ddl-border-focus) !important;
+      border-radius: 8px;
+      box-shadow: var(--ddl-shadow) !important;
+      z-index: 1050;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      overflow: hidden;
+      animation: ssFadeIn 0.12s ease-out;
+      opacity: 1 !important;
+    }
+    @keyframes ssFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .ss-wrapper.open .ss-dropdown {
+      display: block;
+    }
+    .ss-search-wrap {
+      padding: 8px;
+      border-bottom: 1px solid var(--ddl-border) !important;
+      background: var(--ddl-surface) !important;
+      position: relative;
+      opacity: 1 !important;
+    }
+    .ss-search-input {
+      width: 100%;
+      background: var(--ddl-bg) !important;
+      background-color: var(--ddl-bg) !important;
+      border: 1px solid var(--ddl-border) !important;
+      border-radius: 5px;
+      padding: 6px 28px 6px 8px;
+      color: var(--ddl-text) !important;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      opacity: 1 !important;
+    }
+    .ss-search-input:focus {
+      border-color: var(--ddl-border-focus) !important;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+    }
+    .ss-search-icon {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 12px;
+      color: var(--ddl-text-muted) !important;
+      pointer-events: none;
+    }
+    .ss-options-list {
+      max-height: 240px;
+      overflow-y: auto;
+      padding: 4px 0;
+      margin: 0;
+      list-style: none;
+      background: var(--ddl-bg) !important;
+      background-color: var(--ddl-bg) !important;
+      opacity: 1 !important;
+    }
+    .ss-options-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .ss-options-list::-webkit-scrollbar-thumb {
+      background: var(--ddl-border);
+      border-radius: 3px;
+    }
+    .ss-option-item {
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--ddl-text) !important;
+      background: var(--ddl-bg) !important;
+      background-color: var(--ddl-bg) !important;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s, color 0.15s;
+      opacity: 1 !important;
+    }
+    .ss-option-item:hover, .ss-option-item.highlighted {
+      background: var(--ddl-hover) !important;
+      background-color: var(--ddl-hover) !important;
+      color: var(--ddl-text) !important;
+    }
+    .ss-option-item.selected {
+      background: var(--ddl-selected) !important;
+      background-color: var(--ddl-selected) !important;
+      color: #ffffff !important;
+      font-weight: 700;
+    }
+    .ss-no-results {
+      padding: 14px;
+      font-size: 12px;
+      color: var(--ddl-text-muted) !important;
+      text-align: center;
+      background: var(--ddl-bg) !important;
+      background-color: var(--ddl-bg) !important;
+      opacity: 1 !important;
+    }
+
+    /* ─── Category Filter Tree Layout & Line Spacing ─── */
+    #ss_wrapper_catFilter .ss-dropdown {
+      min-width: 380px;
+      max-width: 540px;
+    }
+    #ss_wrapper_catFilter .ss-trigger {
+      min-width: 170px;
+      max-width: 280px;
+    }
+    #ss_wrapper_catFilter .ss-options-list {
+      max-height: 340px;
+    }
+    .ss-option-item.cat-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 14px;
+      line-height: 1.5;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      transition: all 0.15s ease;
+    }
+    .ss-option-item.cat-item.cat-root {
+      background: rgba(30, 41, 59, 0.75) !important;
+      font-weight: 700;
+      color: var(--ks-champagne) !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin-top: 3px;
+    }
+    .ss-option-item.cat-item.cat-root:first-child {
+      border-top: none;
+      margin-top: 0;
+    }
+    .cat-item-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+    .cat-item-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cat-icon {
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .cat-tree-branch {
+      color: var(--ks-kinpaku);
+      font-family: monospace;
+      font-size: 13px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+    .cat-name-text {
+      font-size: 12.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cat-item.cat-root .cat-name-text {
+      font-weight: 800;
+      font-size: 13px;
+      color: var(--ks-champagne);
+    }
+    .cat-path-breadcrumb {
+      font-size: 10.5px;
+      color: var(--ks-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-right: 20px;
+      direction: rtl;
+    }
+    .cat-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .cat-badge.root {
+      background: rgba(214, 170, 91, 0.18);
+      color: var(--ks-kinpaku);
+      border: 1px solid rgba(214, 170, 91, 0.35);
+    }
+    .cat-badge.sub {
+      background: rgba(99, 102, 241, 0.12);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+    }
+    .ss-option-item.selected .cat-path-breadcrumb {
+      color: rgba(255, 255, 255, 0.8) !important;
+    }
+    .ss-option-item.selected .cat-badge.root {
+      background: rgba(255, 255, 255, 0.2) !important;
+      color: #ffffff !important;
+      border-color: rgba(255, 255, 255, 0.4) !important;
+    }
+
     .header-actions { display: flex; align-items: center; gap: 8px; margin-right: auto; }
 
     .theme-btn {
@@ -300,18 +881,27 @@
     .date-tab:hover:not(.active) { color: var(--ks-champagne); }
 
     .filter-select {
-      background: var(--ks-raised); border: 1px solid var(--ks-rule);
+      background-color: var(--ddl-surface) !important;
+      border: 1px solid var(--ddl-border) !important;
       border-radius: 6px; padding: 6px 14px; height: 34px;
-      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 12px; font-weight: 500; color: var(--ks-champagne);
+      font-family: 'Albert Sans', 'Cairo', sans-serif; font-size: 12px; font-weight: 500;
+      color: var(--ddl-text) !important;
       outline: none; cursor: pointer; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23f59e0b'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236366f1'/%3E%3C/svg%3E");
       background-repeat: no-repeat; background-position: left 10px center;
       padding-left: 28px;
       transition: border-color 0.2s, box-shadow 0.2s;
+      opacity: 1 !important;
     }
-    .filter-select:hover { border-color: var(--ks-kinpaku); }
-    .filter-select:focus { border-color: var(--ks-kinpaku); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
-    .filter-select option { background: var(--ks-raised); color: var(--ks-champagne); }
+    .filter-select:hover { border-color: var(--ddl-border-focus) !important; }
+    .filter-select:focus { border-color: var(--ddl-border-focus) !important; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25); }
+    .filter-select option,
+    select option {
+      background-color: var(--ddl-bg) !important;
+      color: var(--ddl-text) !important;
+      padding: 8px 10px;
+      opacity: 1 !important;
+    }
 
     .spacer { flex: 1; }
 
@@ -502,6 +1092,9 @@
       font-size: 20px;
       font-weight: 700;
       color: var(--ks-champagne);
+      direction: ltr !important;
+      unicode-bidi: isolate !important;
+      text-align: right;
     }
     .modal-stat-lbl {
       font-size: 11px;
@@ -756,8 +1349,16 @@
       font-family: 'Cairo', 'Albert Sans', sans-serif;
       font-size: 32px; font-weight: 800; color: var(--ks-champagne); 
       line-height: 1.1; letter-spacing: -0.01em; 
+      direction: ltr !important;
+      unicode-bidi: isolate !important;
+      text-align: right;
     }
-    .kpi-full  { font-size: 13px; color: var(--ks-text-muted); margin-top: 4px; margin-bottom: 14px; }
+    .kpi-full  { 
+      font-size: 13px; color: var(--ks-text-muted); margin-top: 4px; margin-bottom: 14px; 
+      direction: ltr !important;
+      unicode-bidi: isolate !important;
+      text-align: right;
+    }
 
     .kpi-alert {
       display: inline-flex; align-items: center; gap: 6px;
@@ -942,29 +1543,40 @@
       overscroll-behavior-y: auto;
       -webkit-overflow-scrolling: touch;
     }
-    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1240px; }
+    .drill-table { width: 100%; border-collapse: collapse; min-width: 1240px; table-layout: auto; }
     thead tr { background: var(--ks-lacquer-deep); border-bottom: 2px solid var(--ks-rule); }
     thead th {
-      padding: 12px 16px; text-align: right;
+      padding: 12px 14px; text-align: right;
       font-family: 'Cairo', sans-serif;
       font-size: 12px; font-weight: 700; color: var(--ks-text-muted);
       white-space: nowrap;
     }
-    thead th.center { text-align: center; }
-    thead th.left   { text-align: left; }
+    thead th.center { text-align: center !important; }
+    thead th.left   { text-align: left !important; }
+    thead th.right  { text-align: right !important; }
 
     tbody tr {
       border-bottom: 1px solid var(--ks-rule);
       transition: background 0.15s; cursor: pointer;
     }
     tbody tr:hover { background: var(--ks-graphite) !important; }
-    tbody tr.level-state { background: rgba(30, 41, 59, 0.6); font-weight: 600; }
-    tbody tr.level-city  { background: rgba(30, 41, 59, 0.3); }
+    tbody tr.level-state { background: rgba(30, 41, 59, 0.65); font-weight: 600; }
+    tbody tr.level-city  { background: rgba(30, 41, 59, 0.4); font-weight: 600; }
+    tbody tr.level-rep   { background: rgba(49, 46, 129, 0.3); font-weight: 600; }
     tbody tr.level-cust  { background: transparent; }
 
-    td { padding: 11px 16px; font-size: 13px; white-space: nowrap; }
-    td.center { text-align: center; }
-    td.left    { text-align: left; }
+    td { padding: 11px 14px; font-size: 13px; white-space: nowrap; }
+    td.center { text-align: center !important; direction: ltr !important; unicode-bidi: isolate !important; }
+    td.left    { text-align: left !important; direction: ltr !important; unicode-bidi: isolate !important; }
+    td.right   { text-align: right !important; }
+
+    /* Force all table cells to strictly preserve table-cell display */
+    td.val-blue, td.val-green, td.val-red, td.val-warn, td.val-normal,
+    td.center, td.left, td.right {
+      display: table-cell !important;
+      vertical-align: middle;
+    }
 
     .row-indent { display: flex; align-items: center; gap: 8px; }
     .row-expand {
@@ -979,18 +1591,34 @@
     .row-icon { font-size: 15px; flex-shrink: 0; }
     .row-name { font-weight: 600; }
     .row-name.state { color: var(--ks-champagne); font-size: 14px; font-weight: 700; }
-    .row-name.city  { color: var(--ks-text-warm); }
-    .row-name.cust  { color: var(--ks-text-muted); }
+    .row-name.city  { color: var(--ks-text-warm); font-size: 13.5px; font-weight: 600; }
+    .row-name.rep   { color: #a5b4fc; font-size: 13px; font-weight: 600; }
+    .row-name.cust  { color: var(--ks-text-muted); font-size: 12.5px; }
     .row-subrep { font-size: 11px; color: var(--ks-text-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
 
-    .val-blue   { font-weight: 700; color: #3b82f6; }
-    .val-green  { font-weight: 700; color: var(--ks-success); }
-    .val-red    { font-weight: 700; color: var(--ks-warning); }
-    .val-warn   { font-weight: 700; color: var(--ks-kinpaku); }
-    .val-normal { font-weight: 600; color: var(--ks-champagne); }
+    .val-blue   { font-weight: 700; color: #3b82f6; direction: ltr !important; unicode-bidi: isolate !important; }
+    .val-green  { font-weight: 700; color: var(--ks-success); direction: ltr !important; unicode-bidi: isolate !important; }
+    .val-red    { font-weight: 700; color: var(--ks-warning); direction: ltr !important; unicode-bidi: isolate !important; }
+    .val-warn   { font-weight: 700; color: var(--ks-kinpaku); direction: ltr !important; unicode-bidi: isolate !important; }
+    .val-normal { font-weight: 600; color: var(--ks-champagne); direction: ltr !important; unicode-bidi: isolate !important; }
 
-    .rate-wrap  { display: flex; align-items: center; gap: 10px; }
-    .rate-bar   { flex: 1; height: 4px; background: var(--ks-graphite-2); border-radius: 2px; min-width: 40px; overflow: hidden; }
+    span.val-blue, span.val-green, span.val-red, span.val-warn, span.val-normal {
+      display: inline-block;
+    }
+
+    .num-ltr,
+    .rep-value,
+    .rep-detail-value,
+    .ret-amt,
+    .region-mini-val,
+    .chart-detail-value {
+      direction: ltr !important;
+      unicode-bidi: isolate !important;
+      display: inline-block;
+    }
+
+    .rate-wrap  { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-width: 90px; }
+    .rate-bar   { flex: 1; height: 4px; background: var(--ks-graphite-2); border-radius: 2px; min-width: 32px; max-width: 50px; overflow: hidden; }
     .rate-fill  { height: 4px; border-radius: 2px; }
     .rate-fill.good { background: var(--ks-success); }
     .rate-fill.ok   { background: var(--ks-kinpaku); }
@@ -1002,7 +1630,7 @@
     .rate-alert { color: var(--ks-warning); margin-left: 4px; }
 
     tfoot tr { background: var(--ks-lacquer-deep); border-top: 2px solid var(--ks-rule); }
-    tfoot td { padding: 12px 16px; font-size: 13px; font-weight: 700; }
+    tfoot td { padding: 12px 14px; font-size: 13px; font-weight: 700; }
 
     .table-legend {
       display: flex; align-items: center; gap: 20px; padding: 12px 20px;
@@ -1035,6 +1663,57 @@
     .matrix th { color:var(--ks-text-muted); font-size:12px; font-weight:700; }
     .matrix td { color:var(--ks-champagne); font-size:13px; }
     .matrix td strong { color:var(--ks-kinpaku); }
+    .matrix-comp-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--ks-graphite, rgba(255,255,255,0.04));
+      border: 1px solid var(--ks-rule, rgba(255,255,255,0.1));
+      border-radius: 8px;
+      padding: 3px 6px;
+    }
+    .matrix-tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--ks-text-muted, #94a3b8);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+    .matrix-tab-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .matrix-tab-btn.active {
+      background: var(--ks-kinpaku-rich, #d6aa5b);
+      color: #0f172a !important;
+      border-color: var(--ks-kinpaku-rich, #d6aa5b);
+      font-weight: 700;
+      box-shadow: 0 1px 4px rgba(214, 170, 91, 0.3);
+    }
+    .matrix-delta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .matrix-delta-badge.up {
+      background: rgba(34, 197, 94, 0.12);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .matrix-delta-badge.down {
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
     .report-list { display:grid; gap:10px; }
     .report-row { display:grid; grid-template-columns:minmax(150px,1fr) 110px 110px 90px; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--ks-rule); }
     .report-row:last-child { border-bottom:0; }
@@ -1044,28 +1723,53 @@
     .return-total { color:var(--ks-warning); font-size:22px; font-weight:800; margin-bottom:10px; }
     .source-note { display:inline-flex; align-items:center; gap:6px; color:var(--ks-patina); border:1px solid var(--ks-patina); padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; }
     .source-control { display:flex; align-items:center; gap:8px; color:var(--ks-patina); border:1px solid var(--ks-patina); padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600; background:rgba(6,182,212,0.08); }
-    .source-control select { background:var(--ks-raised); color:var(--ks-champagne); border:1px solid var(--ks-rule); border-radius:4px; padding:3px 8px; font-family:'Cairo',sans-serif; font-size:12px; }
-    .source-control select:focus { outline:none; border-color:var(--ks-kinpaku); }
+    .source-control select {
+      background-color: var(--ddl-surface) !important;
+      color: var(--ddl-text) !important;
+      border: 1px solid var(--ddl-border) !important;
+      border-radius: 4px; padding: 3px 8px; font-family: 'Cairo', sans-serif; font-size: 12px;
+      opacity: 1 !important;
+    }
+    .source-control select:focus { outline: none; border-color: var(--ddl-border-focus) !important; }
+    .source-control select option {
+      background-color: var(--ddl-bg) !important;
+      color: var(--ddl-text) !important;
+      opacity: 1 !important;
+    }
     .source-note::before { content:'●'; font-size:9px; }
     .custom-date {
       display: none;
       gap: 8px;
       align-items: flex-end;
       flex-wrap: wrap;
-      background: rgba(245, 158, 11, 0.05);
-      border: 1px dashed rgba(245, 158, 11, 0.35);
+      background: var(--ddl-surface);
+      border: 1px solid var(--ddl-border);
       padding: 6px 12px;
       border-radius: 8px;
       animation: fadeInCustom 0.2s ease;
+      opacity: 1 !important;
     }
     .custom-date.active { display: flex; }
     .custom-date-group { display: flex; flex-direction: column; gap: 3px; }
     .custom-date-label { font-size: 11px; font-weight: 700; color: var(--ks-kinpaku); }
-    .custom-date input { background: var(--ks-raised); color: var(--ks-champagne); border: 1px solid var(--ks-rule); padding: 5px 8px; border-radius: 6px; font-family: 'Cairo', sans-serif; font-size: 12px; min-width: 125px; height: 32px; }
-    .custom-date input:focus { outline: none; border-color: var(--ks-kinpaku); }
+    .custom-date input {
+      background-color: var(--ddl-bg) !important;
+      color: var(--ddl-text) !important;
+      border: 1px solid var(--ddl-border) !important;
+      padding: 5px 8px; border-radius: 6px; font-family: 'Cairo', sans-serif; font-size: 12px; min-width: 125px; height: 32px;
+      opacity: 1 !important;
+    }
+    .custom-date input:focus { outline: none; border-color: var(--ddl-border-focus) !important; }
     .custom-date-sep { font-size: 16px; color: var(--ks-text-muted); padding-bottom: 6px; }
-    .custom-date-divider { width: 1px; height: 28px; background: var(--ks-rule); margin: 0 4px; align-self: center; }
-    .custom-select-sm { height: 32px; padding: 4px 24px 4px 8px; font-size: 12px; }
+    .custom-date-divider { width: 1px; height: 28px; background: var(--ddl-border); margin: 0 4px; align-self: center; }
+    .custom-select-sm {
+      height: 32px;
+      padding: 4px 24px 4px 8px;
+      font-size: 12px;
+      background-color: var(--ddl-surface) !important;
+      color: var(--ddl-text) !important;
+      opacity: 1 !important;
+    }
     @keyframes fadeInCustom { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
     
     .returns-table-card { background:var(--ks-raised); border:1px solid var(--ks-rule); border-radius:8px; box-shadow:var(--card-shadow); overflow:hidden; }
@@ -1207,6 +1911,97 @@
       transition: opacity 0.2s ease;
     }
 
+    /* ─── Premium Glassmorphic Alert Banner ─── */
+    .alert-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 18px;
+      margin: 0 0 20px 0;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-right: 4px solid var(--ks-warning);
+      border-radius: 10px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      animation: alertSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .alert-banner[hidden] {
+      display: none !important;
+    }
+    .alert-banner.warning {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.35);
+      border-right-color: var(--ks-kinpaku);
+    }
+    @keyframes alertSlideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .alert-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .alert-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .alert-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f87171;
+    }
+    .alert-banner.warning .alert-title {
+      color: var(--ks-kinpaku);
+    }
+    .alert-message {
+      font-size: 12px;
+      color: var(--ks-champagne);
+      line-height: 1.4;
+    }
+    .alert-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .alert-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--ks-rule);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ks-champagne);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .alert-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: var(--ks-kinpaku);
+      transform: translateY(-1px);
+    }
+    .alert-btn.retry-btn {
+      background: var(--ks-kinpaku);
+      color: #0f172a;
+      border: none;
+      font-weight: 700;
+    }
+    .alert-btn.retry-btn:hover {
+      background: var(--ks-kinpaku-rich);
+    }
+    .alert-btn.close-btn {
+      padding: 6px 9px;
+      font-size: 13px;
+    }
+
     @media (max-width:800px) { .brd-grid { grid-template-columns:1fr; } .brd-panel.full { grid-column:auto; } .report-row { grid-template-columns:1fr 1fr; } }
   </style>
 </head>
@@ -1229,8 +2024,6 @@
         <div class="logo-sub">لوحة تحكم المبيعات</div>
       </div>
     </div>
-    <div class="divider"></div>
-
 
 
     <!-- Actions -->
@@ -1346,10 +2139,10 @@
         <option value="postedInvoice">Posted Invoice (الفاتورة المعتمدة)</option>
         <option value="salesOrder">Sales Order (أمر المبيعات)</option>
       </select>
-      <select id="salesOrderStatusFilter" onchange="markFiltersPending()" aria-label="حالة أمر المبيعات" hidden>
-        <option value="post">Post</option>
-        <option value="draft">Draft</option>
-        <option value="all">All (Post and Draft)</option>
+      <select id="salesOrderStatusFilter" onchange="onSalesOrderStatusChange()" aria-label="حالة أمر المبيعات" hidden>
+        <option value="all" selected>All (Post and Draft) - الكل</option>
+        <option value="post">Post (Confirmed) - المعتمد فقط</option>
+        <option value="draft">Draft (Quotations) - مسودة وعروض أسعار</option>
       </select>
     </div>
 
@@ -1370,6 +2163,22 @@
 
 <!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
 <main class="main" style="position:relative;z-index:1;">
+
+  <!-- ─── Professional Alert / Error Banner ─── -->
+  <div id="dashboardAlertBanner" class="alert-banner" role="alert" aria-live="assertive" hidden>
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-content">
+      <div class="alert-title" id="alertBannerTitle">تنبيه في مزامنة البيانات من Odoo</div>
+      <div class="alert-message" id="alertBannerMsg">تعذر استرجاع أحدث البيانات نظراً لبطء استجابة الخادم.</div>
+    </div>
+    <div class="alert-actions">
+      <button class="alert-btn retry-btn" onclick="retryLoadDashboard()" title="إعادة محاولة جلب البيانات">
+        <span>🔄</span>
+        <span>إعادة المحاولة</span>
+      </button>
+      <button class="alert-btn close-btn" onclick="dismissAlertBanner()" title="إغلاق التنبيه">✕</button>
+    </div>
+  </div>
 
   <!-- ─── KPI CARDS ─── -->
   <section aria-label="مؤشرات الأداء الرئيسية">
@@ -1410,7 +2219,7 @@
         <div class="kpi-bg"></div>
         <div class="kpi-top">
           <div>
-            <div class="kpi-sub">إجمالي التحصيل</div>
+            <div class="kpi-sub">مدفوعات العملاء (inprocess و paid)</div>
             <div class="kpi-title">المبالغ المحصلة</div>
           </div>
           <div class="kpi-icon">💳</div>
@@ -1493,7 +2302,7 @@
             <button class="tbl-export-btn" onclick="exportProductChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
         </div>
-        <div class="chart-canvas-wrap" style="height:220px;">
+        <div class="chart-canvas-wrap" style="height:350px; min-height:330px;">
           <canvas id="productChart"></canvas>
         </div>
         <div id="prodGrowthRow" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;"></div>
@@ -1505,7 +2314,7 @@
         <div class="chart-header">
           <div class="chart-title-wrap">
             <div class="chart-bar" style="background:linear-gradient(to bottom,#22c55e,#ef4444);"></div>
-            <div class="chart-title">محرك النمو مقابل تحذيرات الإلغاء الخاص بالعملاء</div>
+            <div class="chart-title" id="growthChartTitle">محرك النمو مقابل تحذيرات الإلغاء الخاص بالعملاء</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <div class="churn-badge" onclick="openChurnModal()" style="margin-right:0;cursor:pointer;" title="انقر لعرض وشرح تفاصيل تحذيرات المتابعة">
@@ -1521,7 +2330,7 @@
             <button class="tbl-export-btn" onclick="exportGrowthChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
         </div>
-        <div class="chart-canvas-wrap" style="height:200px;">
+        <div class="chart-canvas-wrap" style="height:320px; min-height:300px;">
           <canvas id="growthChart"></canvas>
         </div>
         <div style="margin-top:4px;">
@@ -1544,11 +2353,11 @@
             <div class="chart-title">التوزيع الجغرافي</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
-            <span style="font-size:11px;color:var(--text3);">📍 ٨ مناطق</span>
+            <span id="geoChartCountBadge" style="font-size:11px;color:var(--text3);">📍 المدن والمناطق</span>
             <button class="tbl-export-btn" onclick="exportGeoChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
         </div>
-        <div class="chart-canvas-wrap" style="height:200px;">
+        <div class="chart-canvas-wrap" style="height:300px; min-height:280px;">
           <canvas id="regionalChart"></canvas>
         </div>
         <div class="region-mini-grid" id="regionMiniGrid" style="margin-top:8px;"></div>
@@ -1565,14 +2374,14 @@
           <div class="chart-title">أداء مندوبي المبيعات</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:11px;color:var(--text3);">نسبة تحقيق الهدف الشهري</span>
+          <span style="font-size:11px;color:var(--text3);">صافي المبيعات ونسبة المساهمة البيعية</span>
           <button class="tbl-export-btn" onclick="exportSalesRepsToExcel()" title="تصدير أداء المندوبين إلى Excel">📥 Excel</button>
         </div>
       </div>
       <div class="rep-table-wrap">
         <table class="rep-table" id="repList">
           <thead>
-            <tr><th>اسم المندوب</th><th>مؤشر الأداء</th><th>القيمة</th><th>معادلة الحساب / الشرح</th></tr>
+            <tr><th>اسم المندوب</th><th>مؤشر الأداء / المساهمة</th><th>صافي المبيعات</th><th>معادلة الحساب / الشرح</th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -1586,11 +2395,22 @@
     <div style="padding:24px 0 0;">
       <div class="brd-panel full" style="margin-bottom:16px;">
         <div class="panel-kicker">ANALYTICAL COMPARISON REPORT &middot; PRODUCTS &amp; REGIONS</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div class="panel-title" style="margin-bottom:0;">تقرير المقارنة التحليلية للمنتجات والمناطق</div>
-          <button class="tbl-export-btn" onclick="exportComparisonMatrixToExcel()" title="تصدير إلى Excel">📥 تصدير Excel</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div class="panel-title" style="margin-bottom:2px;">تقرير المقارنة التحليلية للمنتجات والمناطق</div>
+            <div style="font-size:12px;color:var(--ks-text-muted);">تحليل المؤشرات المالية والتشغيلية المعتمدة ومقارنتها زمنياً مع نسبة الفرق والنمو</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div class="matrix-comp-tabs" aria-label="تحديد فترة المقارنة للتقرير التحليلي">
+              <span style="font-size:11px;font-weight:700;color:var(--ks-text-muted);padding:0 4px;">المقارنة:</span>
+              <button type="button" class="matrix-tab-btn active" id="matrixTabPrev" onclick="setMatrixComparison('previousPeriod')" title="مقارنة المؤشرات مع الفترة السابقة مباشرة">الفترة السابقة</button>
+              <button type="button" class="matrix-tab-btn" id="matrixTabYear" onclick="setMatrixComparison('samePeriodLastYear')" title="مقارنة المؤشرات مع نفس الفترة من العام الماضي">العام الماضي</button>
+              <button type="button" class="matrix-tab-btn" id="matrixTabNone" onclick="setMatrixComparison('none')" title="عرض الفترة الحالية فقط بدون مقارنة زمنية">بدون مقارنة</button>
+            </div>
+            <button class="tbl-export-btn" onclick="exportComparisonMatrixToExcel()" title="تصدير إلى Excel">📥 تصدير Excel</button>
+          </div>
         </div>
-        <div class="matrix-wrap"><table class="matrix" id="comparisonMatrix"><thead><tr><th>المؤشر</th><th>الفترة الحالية</th><th id="comparisonMatrixHeader">فترة المقارنة</th><th>نسبة الفرق / النمو</th></tr></thead><tbody></tbody></table></div>
+        <div class="matrix-wrap"><table class="matrix" id="comparisonMatrix"><thead><tr><th>المؤشر</th><th>الفترة الحالية</th><th id="comparisonMatrixHeader">فترة المقارنة (الفترة السابقة)</th><th>نسبة الفرق / النمو</th></tr></thead><tbody></tbody></table></div>
       </div>
     </div>
   </section>
@@ -1644,7 +2464,7 @@
           <span class="table-hint">— انقر على الصف لتوسيعه</span>
         </div>
         <div class="table-toolbar-right">
-          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع"><option value="region" selected>المنطقة</option><option value="city">المدينة</option><option value="rep">المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
+          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع" onchange="onGroupByFilterChange()"><option value="region" selected>المنطقة</option><option value="city" selected>المدينة</option><option value="rep" selected>المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
           <button class="tbl-btn" onclick="toggleRepSort()">ترتيب المندوبين</button>
           <button class="tbl-btn" onclick="expandAll()">توسيع الكل</button>
           <button class="tbl-btn" onclick="collapseAll()">طي الكل</button>
@@ -1653,31 +2473,35 @@
       </div>
 
       <div class="table-wrap">
-        <table>
+        <table class="drill-table" id="drilldownMainTable">
           <thead>
             <tr id="drillTableHead">
-              <th>التسلسل الهرمي</th>
+              <th style="min-width:240px;text-align:right;">التسلسل الهرمي</th>
               <th class="center" data-sort="invoices">عدد الفواتير</th>
               <th class="center" data-sort="grossQty">إجمالي الكمية المباعة</th>
               <th class="center" data-sort="returnedQty">الكمية المرتجعة</th>
               <th class="center" data-sort="netQty">صافي الكمية المباعة</th>
-              <th class="left" data-sort="gross">إجمالي المبيعات</th>
-              <th class="left" data-sort="returns">المبالغ المرتجعة</th>
-              <th class="left" data-sort="net">صافي المبيعات</th>
-              <th class="left" data-sort="collected">المبالغ المحصلة</th>
-              <th class="left" data-sort="outstanding">المديونية القائمة</th>
+              <th class="center" data-sort="gross">إجمالي المبيعات</th>
+              <th class="center" data-sort="returns">المبالغ المرتجعة</th>
+              <th class="center" data-sort="net">صافي المبيعات</th>
+              <th class="center" data-sort="collected">المبالغ المحصلة</th>
+              <th class="center" data-sort="outstanding">المديونية القائمة</th>
               <th class="center" data-sort="rate">نسبة التحصيل</th>
             </tr>
           </thead>
           <tbody id="drillTableBody"></tbody>
           <tfoot>
             <tr>
-              <td style="color:#e2e8f0;">الإجمالي الكلي</td>
+              <td style="color:#e2e8f0;font-weight:700;">الإجمالي الكلي</td>
               <td class="center val-normal">0</td>
               <td class="center val-normal">0</td>
-              <td class="left val-blue">0 EGP</td>
-              <td class="left val-green">0 EGP</td>
-              <td class="left val-red">0 EGP</td>
+              <td class="center val-red">0</td>
+              <td class="center val-blue">0</td>
+              <td class="center val-blue">0 EGP</td>
+              <td class="center val-red">0 EGP</td>
+              <td class="center val-blue">0 EGP</td>
+              <td class="center val-green">0 EGP</td>
+              <td class="center val-warn">0 EGP</td>
               <td class="center">
                 <div class="rate-wrap">
                   <div class="rate-bar"><div class="rate-fill good" style="width:0%;"></div></div>
@@ -1721,18 +2545,27 @@
     </div>
     
     <div class="modal-body">
+      <!-- Dynamic Data Source & Period Banner -->
+      <div class="modal-source-banner" id="churnModalSourceBanner" style="display:flex;align-items:center;justify-content:space-between;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:13px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">🔄</span>
+          <span><strong>مصدر البيانات المعتمد للتحذيرات:</strong> <span id="churnModalSourceLabel" style="color:var(--ks-champagne);font-weight:700;">الفواتير المعتمدة (Posted Invoices)</span></span>
+        </div>
+        <div id="churnModalPeriodLabel" style="color:var(--ks-text-muted);font-size:12px;font-weight:600;"></div>
+      </div>
+
       <!-- Explainer Banner -->
       <div class="modal-explainer">
         <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;color:var(--ks-champagne);">
           <span>ℹ️</span>
           <span>دليل وتوضيح معايير تحذيرات المتابعة للمستخدم:</span>
         </div>
-        <p style="margin:0 0 6px 0;">
-          ترصد هذه القائمة العملاء الذين حققوا مبيعات سابقة <strong>لا تقل عن 25,000 ج.م</strong> خلال فترة المقارنة، وسجلت مبيعاتهم الحالية <strong>تراجعاً حاداً بنسبة 30% أو أكثر</strong>، لمساعدة إدارة المبيعات على التحرك الاستباقي وتفادي خسارة العميل.
+        <p style="margin:0 0 6px 0;line-height:1.6;">
+          ترصد هذه القائمة أي عميل سجلت مبيعاته الحالية <strong>تراجعاً أو توقفاً تاماً</strong> مقارنة بمبيعاته في الفترة السابقة، <strong>بدون أي حد أدنى مالي</strong> وبغض النظر عن قيمة المبيعات أو حجمها، لمساعدة إدارة المبيعات على التحرك الاستباقي ومتابعة العملاء وتفادي خسارتهم.
         </p>
         <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:6px;">
-          <span>🔴 <strong>خطر مرتفع (High Risk):</strong> تراجع بنسبة <strong>50% فأكثر</strong> (أو توقف تام عن الشراء).</span>
-          <span>🟡 <strong>خطر متوسط (Medium Risk):</strong> تراجع بنسبة تتراوح بين <strong>30% و 49%</strong>.</span>
+          <span>🔴 <strong>خطر مرتفع (High Risk):</strong> توقف تام عن الشراء (مبيعات الفترة الحالية = 0 ج.م) أو تراجع بنسبة <strong>50% فأكثر</strong>.</span>
+          <span>🟡 <strong>خطر متوسط (Medium Risk):</strong> تراجع في المبيعات بنسبة <strong>أقل من 50%</strong>.</span>
         </div>
       </div>
 
@@ -1744,11 +2577,11 @@
         </div>
         <div class="modal-stat-card risk-high">
           <div class="modal-stat-val" id="churnModalHighCount" style="color:var(--ks-warning);">0</div>
-          <div class="modal-stat-lbl">عملاء عالي الخطورة (تراجع ≥ 50%)</div>
+          <div class="modal-stat-lbl">عملاء عالي الخطورة (توقف أو تراجع ≥ 50%)</div>
         </div>
         <div class="modal-stat-card risk-med">
           <div class="modal-stat-val" id="churnModalMedCount" style="color:var(--ks-kinpaku-rich);">0</div>
-          <div class="modal-stat-lbl">عملاء متوسط الخطورة (تراجع 30-49%)</div>
+          <div class="modal-stat-lbl">عملاء متوسط الخطورة (تراجع &lt; 50%)</div>
         </div>
         <div class="modal-stat-card">
           <div class="modal-stat-val" id="churnModalTotalLoss">0 ج.م</div>
@@ -1824,7 +2657,7 @@
             الفترة والمحددات النشطة
           </div>
         </div>
-        <p style="margin:0;font-size:12px;color:var(--ks-text-muted);">
+        <p id="kpiDrilldownDesc" style="margin:0;font-size:12px;color:var(--ks-text-muted);">
           يعرض هذا الجدول القيود والفواتير وأوامر البيع المطابقة لنفس الفترة والمحددات المطبقة بلوحة التحكم. انقر على رقم المستند أو زر <strong>فتح في Odoo ↗</strong> للانتقال مباشرة لشاشة المستند في نظام أودو.
         </p>
       </div>
@@ -1833,19 +2666,19 @@
       <div class="modal-stats" style="grid-template-columns: repeat(4, 1fr);">
         <div class="modal-stat-card">
           <div class="modal-stat-val" id="kpiDrilldownTotalCount">0</div>
-          <div class="modal-stat-lbl">إجمالي عدد المستندات</div>
+          <div class="modal-stat-lbl" id="kpiDrilldownTotalCountLbl">إجمالي عدد المستندات</div>
         </div>
         <div class="modal-stat-card">
           <div class="modal-stat-val" id="kpiDrilldownTotalAmount" style="color:var(--ks-champagne);">0 ج.م</div>
-          <div class="modal-stat-lbl">إجمالي القيمة</div>
+          <div class="modal-stat-lbl" id="kpiDrilldownTotalAmountLbl">إجمالي القيمة</div>
         </div>
         <div class="modal-stat-card">
           <div class="modal-stat-val" id="kpiDrilldownTotalPaid" style="color:var(--ks-success);">0 ج.م</div>
-          <div class="modal-stat-lbl">المبالغ المسددة / المحصلة</div>
+          <div class="modal-stat-lbl" id="kpiDrilldownTotalPaidLbl">المبالغ المسددة / المحصلة</div>
         </div>
         <div class="modal-stat-card">
           <div class="modal-stat-val" id="kpiDrilldownTotalResidual" style="color:var(--ks-warning);">0 ج.م</div>
-          <div class="modal-stat-lbl">الأرصدة المتبقية (مديونية)</div>
+          <div class="modal-stat-lbl" id="kpiDrilldownTotalResidualLbl">الأرصدة المتبقية (مديونية)</div>
         </div>
       </div>
 
@@ -1928,8 +2761,8 @@ const transactionSeed = [
 
 const dashboardData = transactionSeed;
 const legacyMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-const money = value => `${Math.round(value).toLocaleString('ar-EG')} ج.م`;
-const number = value => Math.round(value).toLocaleString('ar-EG');
+const money = value => `${(Number(value) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
+const number = (value, decimals = 2) => (Number(value) || 0).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] || 0), 0);
 const metric = rows => ({ invoices:sum(rows,'invoices'), grossQty:sum(rows,'grossQty'), returnedQty:sum(rows,'returnedQty'), netQty:sum(rows,'grossQty')-sum(rows,'returnedQty'), gross:sum(rows,'gross'), returns:sum(rows,'returns'), net:sum(rows,'gross')-sum(rows,'returns'), collected:sum(rows,'collected') });
 const metricWithDebt = rows => { const m = metric(rows); m.outstanding = m.net - m.collected; m.rate = m.net ? m.collected / m.net * 100 : 0; return m; };
@@ -2034,7 +2867,7 @@ function buildProductChart(mode) {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: {
         callbacks: {
-          label: ctx => ` ${ctx.raw.toLocaleString('ar-EG')} ألف ج.م`
+          label: ctx => ` ${(Number(ctx.raw) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ألف ج.م`
         }
       }},
       scales: {
@@ -2299,8 +3132,8 @@ function renderRow(item, depth) {
         </div>
       </div>
     </td>
-    <td class="center val-normal">${item.invoices.toLocaleString('ar-EG')}</td>
-    <td class="center val-normal">${item.qty.toLocaleString('ar-EG')}</td>
+    <td class="center val-normal">${(Number(item.invoices) || 0).toLocaleString('en-US')}</td>
+    <td class="center val-normal">${(Number(item.qty) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
     <td class="left val-blue">${item.value} ج.م</td>
     <td class="left val-green">${item.collected} ج.م</td>
     <td class="left">${warnIcon}<span class="${item.warn?'val-red':'val-warn'}">${item.outstanding} ج.م</span></td>
@@ -2405,14 +3238,14 @@ function setDateTab(button, mode) { dashboardState.dateMode = mode; document.que
 function applyFilters() { const map = { region:'regionFilter', city:'cityFilter', rep:'repFilter', customer:'customerFilter', category:'catFilter', product:'productFilter', month:'monthFilter', year:'yearFilter', period:'periodFilter', day:'dayFilter' }; Object.entries(map).forEach(([key,id]) => { const el=document.getElementById(id); if (el) dashboardState.filters[key]=el.value; }); dashboardState.filters.query=document.getElementById('globalSearch').value.trim(); syncFilters(); renderDashboard(); }
 function toggleView() { document.getElementById('viewToggle').classList.toggle('qty'); dashboardState.productMetric = dashboardState.productMetric === 'amount' ? 'quantity' : 'amount'; renderProductReport(); }
 function groupedRows(rows) { const groups = new Map(); rows.forEach(row => { const key = dashboardState.groupBy.map(group => row[group]).join(' / '); if (!groups.has(key)) groups.set(key, { id:key, name:key, level:'state', icon:'◆', children:[] }); groups.get(key).children.push(row); }); return [...groups.values()]; }
-function tableCells(m) { return `<td class="center">${number(m.invoices)}</td><td class="center">${number(m.grossQty)}</td><td class="center">${number(m.returnedQty)}</td><td class="center">${number(m.netQty)}</td><td class="left val-blue">${money(m.gross)}</td><td class="left val-red">${money(m.returns)}</td><td class="left val-blue">${money(m.net)}</td><td class="left val-green">${money(m.collected)}</td><td class="left val-warn">${money(m.outstanding)}</td><td class="center">${m.rate.toFixed(1)}٪</td>`; }
+function tableCells(m) { return `<td class="center">${number(m.invoices)}</td><td class="center">${number(m.grossQty)}</td><td class="center">${number(m.returnedQty)}</td><td class="center">${number(m.netQty)}</td><td class="center val-blue">${money(m.gross)}</td><td class="center val-red">${money(m.returns)}</td><td class="center val-blue">${money(m.net)}</td><td class="center val-green">${money(m.collected)}</td><td class="center val-warn">${money(m.outstanding)}</td><td class="center">${m.rate.toFixed(1)}٪</td>`; }
 function renderTable() { const body=document.getElementById('drillTableBody'), rows=rowsForState(); const direction=dashboardState.sort.dir==='desc'?1:-1; const groups=groupedRows(rows).sort((a,b) => direction*((metricWithDebt(b.children)[dashboardState.sort.key]||0)-(metricWithDebt(a.children)[dashboardState.sort.key]||0))); body.innerHTML=groups.map(group => { const m=metricWithDebt(group.children), open=dashboardState.expanded.has(group.id); const children=open ? group.children.map(row => `<tr><td><span style="padding-right:28px;">└ ${row.customer} / ${row.product}</span></td>${tableCells(metricWithDebt([row]))}</tr>`).join('') : ''; return `<tr class="level-state" data-id="${group.id}" onclick="toggleRow('${group.id}',event)"><td><span class="row-expand ${open?'expanded':''}">${open?'▼':'▶'}</span> ${group.name}</td>${tableCells(m)}</tr>${children}`; }).join(''); const total=metricWithDebt(rows); const foot=document.querySelector('#drillTableBody').parentElement.querySelector('tfoot tr'); if (foot) foot.innerHTML=`<td>الإجمالي الكلي</td>${tableCells(total)}`; }
 function toggleRow(id,event) { if (event) event.stopPropagation(); dashboardState.expanded.has(id) ? dashboardState.expanded.delete(id) : dashboardState.expanded.add(id); renderTable(); }
 function expandAll() { groupedRows(rowsForState()).forEach(row => dashboardState.expanded.add(row.id)); renderTable(); }
 function collapseAll() { dashboardState.expanded.clear(); renderTable(); }
 function renderProductReport() { const rows=rowsForState(), grouped=new Map(); rows.forEach(row => { const key=dashboardState.groupBy.includes('category') && !dashboardState.groupBy.includes('product') ? row.category : row.product; const old=grouped.get(key)||{name:key,amount:0,quantity:0}; old.amount+=row.gross-row.returns; old.quantity+=row.grossQty-row.returnedQty; grouped.set(key,old); }); const items=[...grouped.values()].sort((a,b)=>b[dashboardState.productMetric==='amount'?'amount':'quantity']-a[dashboardState.productMetric==='amount'?'amount':'quantity']); buildProductChart = function() {}; if (dashboardState.charts.product) dashboardState.charts.product.destroy(); dashboardState.charts.product=new Chart(document.getElementById('productChart'),{type:'bar',data:{labels:items.slice(0,5).map(x=>x.name),datasets:[{data:items.slice(0,5).map(x=>x[dashboardState.productMetric==='amount'?'amount':'quantity']),backgroundColor:'#d6aa5b',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}}); const total=sum(items,dashboardState.productMetric==='amount'?'amount':'quantity')||1; document.getElementById('prodGrowthRow').innerHTML=items.slice(0,5).map(x=>`<div style="flex:1;text-align:center;color:var(--text3);font-size:10px;">${x.name}<br><strong style="color:var(--ks-kinpaku);">${(x[dashboardState.productMetric==='amount'?'amount':'quantity']/total*100).toFixed(1)}٪</strong></div>`).join(''); }
 function renderGrowthChart() { const rows=rowsForState(), labels=dashboardState.dateMode==='ربع سنوي'?['Q1','Q2','Q3','Q4']:dashboardState.dateMode==='يومي'?[...new Set(rows.map(r=>r.date.slice(8)))]:months; const values=labels.map(label=>metric(rows.filter(r=>dashboardState.dateMode==='ربع سنوي'?`Q${Math.floor(new Date(r.date).getMonth()/3)+1}`===label:dashboardState.dateMode==='يومي'?r.date.slice(8)===label:months[new Date(r.date).getMonth()]===label)).net); if(dashboardState.charts.growth) dashboardState.charts.growth.destroy(); dashboardState.charts.growth=new Chart(document.getElementById('growthChart'),{type:'line',data:{labels,datasets:[{label:'صافي المبيعات',data:values,borderColor:'#d6aa5b',backgroundColor:'rgba(214,170,91,.16)',fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false}}); }
-function renderRegionalChart() { const rows=rowsForState(), names=optionValues(rows,'region'), values=names.map(name=>metric(rows.filter(r=>r.region===name)).net); if(dashboardState.charts.regional) dashboardState.charts.regional.destroy(); dashboardState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:names,datasets:[{label:'صافي المبيعات',data:values,backgroundColor:'#70aaa2'}]},options:{responsive:true,maintainAspectRatio:false}}); document.getElementById('regionMiniGrid').innerHTML=names.slice(0,4).map((name,i)=>`<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${values[i].toLocaleString('ar-EG')}</div></div>`).join(''); }
+function renderRegionalChart() { const rows=rowsForState(), names=optionValues(rows,'region'), values=names.map(name=>metric(rows.filter(r=>r.region===name)).net); if(dashboardState.charts.regional) dashboardState.charts.regional.destroy(); dashboardState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:names,datasets:[{label:'صافي المبيعات',data:values,backgroundColor:'#70aaa2'}]},options:{responsive:true,maintainAspectRatio:false}}); document.getElementById('regionMiniGrid').innerHTML=names.slice(0,4).map((name,i)=>`<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${(Number(values[i]) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>`).join(''); }
 function renderRepReport() { const rows=rowsForState(), reps=optionValues(rows,'rep').map(name=>({name,metric:metricWithDebt(rows.filter(r=>r.rep===name)),region:rows.find(r=>r.rep===name)?.region||'كل المناطق'})).sort((a,b)=>dashboardState.repSort==='desc'?b.metric.net-a.metric.net:a.metric.net-b.metric.net); document.querySelector('#repList tbody').innerHTML=reps.map((r,i)=>`<tr><td><span class="rep-rank">#${i+1}</span> <span class="rep-name">${r.name}</span><div class="rep-region">${r.region}</div></td><td><span class="rep-bar-track"><span class="rep-bar-fill ok" style="display:block;width:${Math.min(r.metric.rate,100)}%;"></span></span><span class="rep-pct ok">${r.metric.rate.toFixed(1)}٪</span></td><td class="rep-value">${money(r.metric.net)}</td><td class="rep-explanation">صافي المبيعات ${money(r.metric.net)} ÷ عدد الفواتير ${number(r.metric.invoices)} = ${money(r.metric.invoices ? r.metric.net/r.metric.invoices : 0)} متوسط الفاتورة</td></tr>`).join(''); }
 function renderDashboard() { syncFilters(); renderKpis(); renderTable(); renderProductReport(); renderGrowthChart(); renderRegionalChart(); renderRepReport(); const sub=document.querySelector('.section-sub'); if(sub) sub.textContent=`${dashboardState.filters.region||'كل المناطق'} | ${dashboardState.filters.rep||'كل المندوبين'} | ${dashboardState.filters.category||'كل الفئات'}`; }
 function toggleRepSort() { dashboardState.repSort=dashboardState.repSort==='desc'?'asc':'desc'; renderRepReport(); }
@@ -2459,8 +3292,8 @@ document.addEventListener('DOMContentLoaded', () => { document.getElementById('g
   brdLedger.push({ id:'brd-prior-year', date:'2025-12-12', region:'القاهرة الكبرى', city:'الجيزة', rep:'كريم سعيد الشافعي', customer:'مصنع الأمل للمفروشات', category:'الأرضيات', product:'أرضية بازلت ٤مم', invoices:9, grossQty:58, gross:138000, collected:104000, returnedQty:3, returns:7200, returnOrders:1, target:142000 });
 
   const brdState = { filters:{region:'',city:'',rep:'',customer:'',category:'',product:'',month:'',year:'',period:'',day:'',query:'',from:'',to:''}, mode:'شهري', metric:'amount', comparison:'previousPeriod', source:'postedInvoice', salesOrderStatus:'post', sortKey:'net', sortDirection:'desc', expanded:new Set(), repExpanded:new Set(), groupKeys:['region'], charts:{} };
-  const brdMoney = value => `${Math.round(value || 0).toLocaleString('ar-EG')} ج.م`;
-  const brdNum = value => Math.round(value || 0).toLocaleString('ar-EG');
+  const brdMoney = value => `${(Number(value) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
+  const brdNum = (value, decimals = 2) => (Number(value) || 0).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   const brdSum = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
   const brdMetric = rows => { const gross=brdSum(rows,'gross'), returns=brdSum(rows,'returns'), net=gross-returns, collected=brdSum(rows,'collected'); return { invoices:brdSum(rows,'invoices'), grossQty:brdSum(rows,'grossQty'), returnedQty:brdSum(rows,'returnedQty'), netQty:brdSum(rows,'grossQty')-brdSum(rows,'returnedQty'), gross, returns, net, collected, outstanding:net-collected, rate:net ? collected/net*100 : 0, returnOrders:brdSum(rows,'returnOrders') }; };
   const brdDistinct = (rows, key) => [...new Set(rows.map(row => row[key]))].sort((a,b) => String(a).localeCompare(String(b),'ar'));
@@ -2553,7 +3386,7 @@ document.addEventListener('DOMContentLoaded', () => { document.getElementById('g
   }
   function brdGeoChart() { const rows=brdFiltered(),regions=brdDistinct(rows,'region'),metrics=regions.map(name=>brdMetric(rows.filter(row=>row.region===name)));window._lastGeoChartData=regions.map((name,index)=>({region:name,netSales:metrics[index].net,collected:metrics[index].collected,outstanding:metrics[index].outstanding}));brdDestroy('regionalChart');brdState.charts.regional=new Chart(document.getElementById('regionalChart'),{type:'bar',data:{labels:regions,datasets:[{label:'صافي المبيعات',data:metrics.map(m=>m.net),backgroundColor:'#70aaa2'},{label:'المحصّلات',data:metrics.map(m=>m.collected),backgroundColor:'#d6aa5b'},{label:'المديونية القائمة',data:metrics.map(m=>m.outstanding),backgroundColor:'#b86b5c'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},onClick:(event,elements)=>{if(!elements.length)return;const index=elements[0].index,m=metrics[index],card=document.getElementById('regionDetailCard');card.hidden=false;card.innerHTML=`<div class="chart-detail-title">${regions[index]}</div><div><div class="chart-detail-label">المحصلات</div><div class="chart-detail-value">${brdMoney(m.collected)}</div></div><div><div class="chart-detail-label">المديونية القائمة</div><div class="chart-detail-value">${brdMoney(m.outstanding)}</div></div><div><div class="chart-detail-label">صافي المبيعات</div><div class="chart-detail-value">${brdMoney(m.net)}</div></div>`;}}});document.getElementById('regionMiniGrid').innerHTML=regions.slice(0,4).map((name,index)=>{const m=metrics[index];return `<div class="region-mini"><div class="region-mini-name">${name}</div><div class="region-mini-rate good">${brdMoney(m.net)}</div></div>`;}).join(''); }
   function brdReps() { const rows=brdFiltered(), names=salesReps.map(rep=>({rep,rows:rows.filter(row=>row.rep===rep.name)})).sort((a,b)=>b.rep.actualPercentage-a.rep.actualPercentage);document.querySelector('#repList tbody').innerHTML=names.map((entry,index)=>{const rep=entry.rep,open=brdState.repExpanded.has(rep.name),cls=rep.actualPercentage>=100?'over':rep.actualPercentage>=80?'ok':'low';return `<tr class="rep-main-row ${open?'is-expanded':''}" data-rep-id="${rep.name}" onclick="toggleRepRow('${rep.name.replaceAll("'","\\'")}')"><td><span class="rep-toggle">▼</span><span class="rep-rank">#${index+1}</span> <span class="rep-name">${rep.name}</span><div class="rep-region">${rep.region}</div></td><td><span class="rep-bar-track"><span class="rep-bar-fill ${cls}" style="display:block;width:${Math.min(rep.actualPercentage,100)}%;"></span></span><span class="rep-pct ${cls}">${rep.actualPercentage}%</span></td><td class="rep-value">${brdMoney(rep.actualAmount)}</td><td class="rep-explanation">اضغط لعرض تفاصيل الأداء</td></tr><tr class="rep-detail-row ${open?'is-expanded':''}" data-rep-detail="${rep.name}"><td colspan="4"><div class="rep-detail-panel"><div class="rep-detail-card kpi"><span class="rep-detail-label">مؤشر الأداء</span><span class="rep-detail-value">${rep.kpi}</span></div><div class="rep-detail-card target"><span class="rep-detail-label">الهدف</span><span class="rep-detail-value">${brdMoney(rep.target)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">المبلغ الفعلي المنجز</span><span class="rep-detail-value">${brdMoney(rep.actualAmount)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">المبلغ النظري</span><span class="rep-detail-value">${brdMoney(rep.theoreticalAmount)}</span></div><div class="rep-detail-card"><span class="rep-detail-label">النسبة الفعلية</span><span class="rep-detail-value">${rep.actualPercentage}%</span></div><div class="rep-detail-card"><span class="rep-detail-label">النسبة النظرية</span><span class="rep-detail-value">${rep.theoreticalPercentage}%</span></div><div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة النظرية</span><span class="rep-detail-value">${rep.gapTheoreticalPercentage>=0?'+':''}${rep.gapTheoreticalPercentage}%</span></div><div class="rep-detail-card gap"><span class="rep-detail-label">فجوة النسبة الفعلية</span><span class="rep-detail-value">${rep.gapPercentage>=0?'+':''}${rep.gapPercentage}%</span></div></div></td></tr>`;}).join(''); }
-  function brdReports() { const filtered=brdFiltered(),rows=brdCurrentRows(filtered),m=brdMetric(rows),prior=brdMetric(brdComparisonRows(filtered)),variance=key=>brdDelta(m[key],prior[key]);const matrix=[['إجمالي المبيعات','gross'],['إجمالي الكمية المباعة','grossQty'],['إجمالي المرتجعات','returns'],['إجمالي الكمية المرتجعة','returnedQty'],['صافي المبيعات','net'],['صافي الكمية المباعة','netQty'],['المستحق','net'],['المدفوع / المحصل','collected'],['المديونية المتبقية','outstanding'],['عدد الفواتير المعتمدة','invoices'],['عدد أوامر الارجاع','returnOrders']];document.querySelector('#comparisonMatrix thead tr').innerHTML='<th>المؤشر</th><th>الفترة الحالية</th><th>فترة المقارنة</th><th>نسبة الفرق / النمو</th>';document.querySelector('#comparisonMatrix tbody').innerHTML=matrix.map(([label,key])=>`<tr><td>${label}</td><td>${brdNum(m[key])}</td><td>${brdNum(prior[key])}</td><td class="${variance(key)>=0?'val-green':'val-red'}">${variance(key).toFixed(1)}٪</td></tr>`).join(''); }
+  function brdReports() { const filtered=brdFiltered(),rows=brdCurrentRows(filtered),m=brdMetric(rows),prior=brdMetric(brdComparisonRows(filtered)),variance=key=>brdDelta(m[key],prior[key]);const matrix=[['إجمالي المبيعات','gross'],['إجمالي الكمية المباعة','grossQty'],['إجمالي المرتجعات','returns'],['إجمالي الكمية المرتجعة','returnedQty'],['صافي المبيعات','net'],['صافي الكمية المباعة','netQty'],['المستحق','net'],['المدفوع / المحصل','collected'],['المديونية المتبقية','outstanding'],['إجمالي فواتير البيع والمرتجعات المرحّلة (عدد الحركات المعتمدة - Posted)','invoices'],['عدد أوامر الارجاع','returnOrders']];document.querySelector('#comparisonMatrix thead tr').innerHTML='<th>المؤشر</th><th>الفترة الحالية</th><th>فترة المقارنة</th><th>نسبة الفرق / النمو</th>';document.querySelector('#comparisonMatrix tbody').innerHTML=matrix.map(([label,key])=>`<tr><td>${label}</td><td>${brdNum(m[key])}</td><td>${brdNum(prior[key])}</td><td class="${variance(key)>=0?'val-green':'val-red'}">${variance(key).toFixed(1)}٪</td></tr>`).join(''); }
   function brdRender(){brdSyncOptions();brdKpis();brdTable();brdProductsChart();brdGrowthChart();brdGeoChart();brdReps();brdReports();const source=document.getElementById('dataSourceFilter'),status=document.getElementById('salesOrderStatusFilter');if(source){source.value=brdState.source;status.hidden=brdState.source!=='salesOrder';status.value=brdState.salesOrderStatus;}const date=document.getElementById('dashboardDate'),summary=document.getElementById('dashboardFilterSummary');if(date)date.textContent=brdDateText();if(summary)summary.textContent=`${brdState.filters.region||'كل المناطق'} | ${brdState.filters.rep||'كل المندوبين'} | ${brdState.filters.category||'كل الفئات'}`;window.__dashboardRows=()=>brdCurrentRows(brdFiltered());window.__dashboardLedger=brdSourceRows;window.refreshRepresentativeAmounts?.();window.renderReturnsAnalyticsTable?.();}
   function brdApply(){const ids={region:'regionFilter',city:'cityFilter',rep:'repFilter',customer:'customerFilter',category:'catFilter',product:'productFilter',month:'monthFilter',year:'yearFilter',period:'periodFilter',day:'dayFilter'};Object.entries(ids).forEach(([key,id])=>{const el=document.getElementById(id);if(el)brdState.filters[key]=el.value;});brdState.source=document.getElementById('dataSourceFilter').value;brdState.salesOrderStatus=document.getElementById('salesOrderStatusFilter').value;brdState.comparison=document.getElementById('comparisonFilter').value;brdState.filters.query=document.getElementById('globalSearch').value.trim();brdState.filters.from=document.getElementById('dateFrom').value;brdState.filters.to=document.getElementById('dateTo').value;brdRender();}
   window.toggleRepRow=id=>{const key=String(id);brdState.repExpanded.has(key)?brdState.repExpanded.delete(key):brdState.repExpanded.add(key);brdReps();};
@@ -2656,8 +3489,8 @@ function renderReturnsAnalyticsTable() {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--ks-text-muted);padding:24px;">لا توجد مرتجعات في الفترة المحددة</td></tr>';
     return;
   }
-  const brdMoneyFn = v => `${Math.round(v||0).toLocaleString('ar-EG')} ج.م`;
-  const brdNumFn   = v => Math.round(v||0).toLocaleString('ar-EG');
+  const brdMoneyFn = v => `${(Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
+  const brdNumFn   = (v, decimals = 2) => (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   tbody.innerHTML = returnsRows.slice(0, 20).map((row, i) => {
     const creditNote = row.creditNote || (row.returnOrders > 0 ? `CN-${String(i+1).padStart(4,'0')}` : '—');
     return `<tr class="clickable-return-row">
@@ -2739,7 +3572,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function brdDisplayMoney(value) {
-    return `${Math.round(value || 0).toLocaleString('ar-EG')} ج.م`;
+    return `${(Number(value) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م`;
   }
 
   window.refreshRepresentativeAmounts = refreshRepresentativeAmounts;
