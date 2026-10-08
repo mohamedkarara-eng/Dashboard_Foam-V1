@@ -14,7 +14,6 @@ const liveDashboard = {
     startDate: '',
     endDate: '',
     region: '',
-    city: '',
     rep: '',
     customer: '',
     category: '',
@@ -23,6 +22,14 @@ const liveDashboard = {
     comparison: 'previousPeriod',
     source: 'postedInvoice',
     salesOrderStatus: 'all'
+  },
+  sourceFilters: {
+    postedInvoice: {},
+    salesOrder: { salesOrderStatus: 'all' }
+  },
+  pages: {
+    postedInvoice: { data: null },
+    salesOrder: { data: null }
   },
   mode: 'شهري',
   growthGrouping: 'churn',
@@ -193,6 +200,44 @@ function clearFiltersPending() {
 const clientOverviewCache = new Map();
 const CLIENT_CACHE_TTL_MS = 2.5 * 60 * 1000; // 2.5 minutes cache in browser
 const CLIENT_CACHE_MAX = 50;
+const SOURCE_PAGE_FILTER_FIELDS = ['region', 'rep', 'customer', 'category', 'product', 'salesOrderStatus'];
+let activeOverviewLoadId = 0;
+
+function captureSourcePageFilters(source) {
+  const filters = liveDashboard.sourceFilters[source] || {};
+  const controlIds = {
+    region: 'regionFilter',
+    rep: 'repFilter',
+    customer: 'customerFilter',
+    category: 'catFilter',
+    product: 'productFilter',
+    salesOrderStatus: 'salesOrderStatusFilter'
+  };
+  SOURCE_PAGE_FILTER_FIELDS.forEach(key => {
+    const controlValue = document.getElementById(controlIds[key])?.value;
+    filters[key] = controlValue !== undefined ? controlValue : (liveDashboard.filters[key] || '');
+  });
+  liveDashboard.sourceFilters[source] = filters;
+}
+
+function restoreSourcePageFilters(source) {
+  const filters = liveDashboard.sourceFilters[source] || {};
+  SOURCE_PAGE_FILTER_FIELDS.forEach(key => {
+    liveDashboard.filters[key] = filters[key] || (key === 'salesOrderStatus' ? 'all' : '');
+  });
+  const controlIds = {
+    region: 'regionFilter',
+    rep: 'repFilter',
+    customer: 'customerFilter',
+    category: 'catFilter',
+    product: 'productFilter',
+    salesOrderStatus: 'salesOrderStatusFilter'
+  };
+  SOURCE_PAGE_FILTER_FIELDS.forEach(key => {
+    const control = document.getElementById(controlIds[key]);
+    if (control) control.value = liveDashboard.filters[key];
+  });
+}
 
 function getClientCacheKey(params) {
   const sorted = [...params.entries()]
@@ -201,39 +246,76 @@ function getClientCacheKey(params) {
   return sorted.map(([k, v]) => `${k}=${v}`).join('&');
 }
 
+function appendSharedOverviewParams(params, filters) {
+  if (filters.dateFilterType === 'quick') {
+    params.set('dateFilterType', 'quick');
+    params.set('quickPreset', filters.quickPreset || 'شهري');
+    if (filters.startDate) params.set('startDate', filters.startDate);
+    if (filters.endDate) params.set('endDate', filters.endDate);
+    if (filters.year) params.set('year', filters.year);
+  } else {
+    params.set('dateFilterType', 'custom');
+    if (filters.startDate && filters.endDate) {
+      params.set('startDate', filters.startDate);
+      params.set('endDate', filters.endDate);
+    } else {
+      if (filters.year) params.set('year', filters.year);
+      if (filters.month) params.set('month', filters.month);
+      if (filters.period) params.set('period', filters.period);
+      if (filters.day) params.set('day', filters.day);
+    }
+  }
+  if (filters.comparison) params.set('comparison', filters.comparison);
+  params.set('metric', filters.metric || 'amount');
+}
+
+function buildPostedInvoiceOverviewParams(filters) {
+  const params = new URLSearchParams();
+  appendSharedOverviewParams(params, filters);
+  params.set('source', 'postedInvoice');
+  ['region', 'rep', 'customer', 'category', 'product', 'query'].forEach(key => {
+    if (filters[key]) params.set(key, filters[key]);
+  });
+  return params;
+}
+
+function buildSalesOrderOverviewParams(filters) {
+  const params = new URLSearchParams();
+  appendSharedOverviewParams(params, filters);
+  params.set('source', 'salesOrder');
+  ['region', 'rep', 'customer', 'category', 'product', 'query'].forEach(key => {
+    if (filters[key]) params.set(key, filters[key]);
+  });
+  params.set('salesOrderStatus', filters.salesOrderStatus || 'all');
+  return params;
+}
+
+function buildOverviewRequest(source, filters) {
+  if (source === 'salesOrder') {
+    return {
+      endpoint: '/api/dashboard/sales-orders/overview',
+      params: buildSalesOrderOverviewParams(filters)
+    };
+  }
+  return {
+    endpoint: '/api/dashboard/posted-invoices/overview',
+    params: buildPostedInvoiceOverviewParams(filters)
+  };
+}
+
 async function loadLiveDashboard(forceRefresh = false) {
+  const loadId = ++activeOverviewLoadId;
+  const requestedSource = liveDashboard.filters.source || 'postedInvoice';
   clearFiltersPending();
   const errorNode = document.getElementById('dashboardError');
   if (errorNode) errorNode.hidden = true;
   showLoading(forceRefresh ? 'جاري تحديث البيانات من خادم Odoo...' : 'جاري تحميل البيانات...');
   try {
-    const params = new URLSearchParams();
-
-    // Isolated Date Filtering Logic
-    if (liveDashboard.filters.dateFilterType === 'quick') {
-      params.set('dateFilterType', 'quick');
-      params.set('quickPreset', liveDashboard.filters.quickPreset || 'شهري');
-      if (liveDashboard.filters.startDate) params.set('startDate', liveDashboard.filters.startDate);
-      if (liveDashboard.filters.endDate) params.set('endDate', liveDashboard.filters.endDate);
-      if (liveDashboard.filters.year) params.set('year', liveDashboard.filters.year);
-    } else {
-      params.set('dateFilterType', 'custom');
-      if (liveDashboard.filters.startDate && liveDashboard.filters.endDate) {
-        params.set('startDate', liveDashboard.filters.startDate);
-        params.set('endDate', liveDashboard.filters.endDate);
-      } else {
-        if (liveDashboard.filters.year) params.set('year', liveDashboard.filters.year);
-        if (liveDashboard.filters.month) params.set('month', liveDashboard.filters.month);
-        if (liveDashboard.filters.period) params.set('period', liveDashboard.filters.period);
-        if (liveDashboard.filters.day) params.set('day', liveDashboard.filters.day);
-      }
-    }
-
-    ['region', 'city', 'rep', 'customer', 'category', 'product', 'query', 'comparison', 'source', 'salesOrderStatus']
-      .forEach((key) => {
-        if (liveDashboard.filters[key]) params.set(key, liveDashboard.filters[key]);
-      });
-    params.set('metric', liveDashboard.metric || 'amount');
+    const request = buildOverviewRequest(requestedSource, {
+      ...liveDashboard.filters,
+      metric: liveDashboard.metric || 'amount'
+    });
+    const { endpoint, params } = request;
 
     const clientKey = getClientCacheKey(params);
 
@@ -241,6 +323,8 @@ async function loadLiveDashboard(forceRefresh = false) {
     if (!forceRefresh && clientOverviewCache.has(clientKey)) {
       const cached = clientOverviewCache.get(clientKey);
       if (cached && (Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS)) {
+        if (loadId !== activeOverviewLoadId || requestedSource !== liveDashboard.filters.source) return;
+        liveDashboard.pages[requestedSource].data = cached.payload;
         liveDashboard.data = cached.payload;
         renderAllDashboardComponents();
         hideLoading();
@@ -250,10 +334,12 @@ async function loadLiveDashboard(forceRefresh = false) {
 
     if (forceRefresh) {
       params.set('refresh', '1');
-      clientOverviewCache.clear();
+      for (const key of clientOverviewCache.keys()) {
+        if (key.includes(`source=${requestedSource}`)) clientOverviewCache.delete(key);
+      }
     }
 
-    const res = await fetch('/api/dashboard/overview?' + params.toString(), { credentials: 'same-origin' });
+    const res = await fetch(endpoint + '?' + params.toString(), { credentials: 'same-origin' });
     if (!res.ok) {
       if (res.status === 401) {
         window.location.href = '/login.html';
@@ -264,7 +350,6 @@ async function loadLiveDashboard(forceRefresh = false) {
     }
 
     const payload = await res.json();
-    liveDashboard.data = payload;
 
     // Cache the fresh payload in client browser memory
     if (clientOverviewCache.size >= CLIENT_CACHE_MAX) {
@@ -272,6 +357,10 @@ async function loadLiveDashboard(forceRefresh = false) {
       clientOverviewCache.delete(oldestKey);
     }
     clientOverviewCache.set(clientKey, { payload, timestamp: Date.now() });
+
+    if (loadId !== activeOverviewLoadId || requestedSource !== liveDashboard.filters.source) return;
+    liveDashboard.pages[requestedSource].data = payload;
+    liveDashboard.data = payload;
 
     renderAllDashboardComponents();
 
@@ -282,10 +371,11 @@ async function loadLiveDashboard(forceRefresh = false) {
     }
   } catch (err) {
     console.error('Error loading live dashboard:', err.message);
+    if (loadId !== activeOverviewLoadId || requestedSource !== liveDashboard.filters.source) return;
     const friendly = formatUserFriendlyError(err);
     showDashboardAlert(friendly, 'error');
   } finally {
-    hideLoading();
+    if (loadId === activeOverviewLoadId) hideLoading();
   }
 }
 
@@ -385,7 +475,7 @@ function retryLoadDashboard() {
 }
 
 function renderAllDashboardComponents() {
-  if (!liveDashboard.data) return;
+  if (!liveDashboard.data || liveDashboard.data.source !== liveDashboard.filters.source) return;
   const d = liveDashboard.data;
 
   const activeCompKpis = (liveDashboard.filters.comparison === 'none' || d.comparison?.mode === 'none') ? null : d.comparison?.kpis;
@@ -413,7 +503,7 @@ function renderAllDashboardComponents() {
   }
 }
 
-const SEARCHABLE_SELECT_IDS = ['customerFilter', 'productFilter', 'catFilter', 'regionFilter', 'cityFilter', 'repFilter'];
+const SEARCHABLE_SELECT_IDS = ['customerFilter', 'productFilter', 'catFilter', 'regionFilter', 'repFilter'];
 
 function normalizeArabic(text) {
   if (!text) return '';
@@ -467,6 +557,18 @@ function initSearchableSelects() {
     const searchInput = dropdown.querySelector('.ss-search-input');
     const optionsList = dropdown.querySelector('.ss-options-list');
 
+    function getVisibleItems() {
+      return Array.from(optionsList.querySelectorAll('.ss-option-item')).filter(el => el.style.display !== 'none');
+    }
+
+    function setHighlighted(targetEl) {
+      optionsList.querySelectorAll('.ss-option-item.highlighted').forEach(el => el.classList.remove('highlighted'));
+      if (targetEl) {
+        targetEl.classList.add('highlighted');
+        targetEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+
     // Toggle dropdown open/close
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -483,13 +585,14 @@ function initSearchableSelects() {
         filterOptionsList(optionsList, '');
         searchInput.focus();
         const selected = optionsList.querySelector('.selected');
-        if (selected) selected.scrollIntoView({ block: 'nearest' });
+        const visible = getVisibleItems();
+        setHighlighted(selected || visible[0] || null);
       }
     });
 
     // Keyboard support on trigger
     trigger.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         trigger.click();
       }
@@ -504,18 +607,49 @@ function initSearchableSelects() {
     searchInput.addEventListener('input', (e) => {
       e.stopPropagation();
       filterOptionsList(optionsList, searchInput.value);
+      const visible = getVisibleItems();
+      setHighlighted(visible[0] || null);
     });
 
-    // Keyboard navigation in search input
+    // Keyboard navigation in search input (Arrow Down, Arrow Up, Enter, Escape)
     searchInput.addEventListener('keydown', (e) => {
+      const visibleItems = getVisibleItems();
       if (e.key === 'Escape') {
+        e.preventDefault();
         wrapper.classList.remove('open');
         trigger.focus();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!visibleItems.length) return;
+        const currentIdx = visibleItems.findIndex(el => el.classList.contains('highlighted'));
+        let nextIdx = 0;
+        if (currentIdx >= 0) {
+          nextIdx = (currentIdx + 1) % visibleItems.length;
+        }
+        setHighlighted(visibleItems[nextIdx]);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!visibleItems.length) return;
+        const currentIdx = visibleItems.findIndex(el => el.classList.contains('highlighted'));
+        let prevIdx = visibleItems.length - 1;
+        if (currentIdx >= 0) {
+          prevIdx = (currentIdx - 1 + visibleItems.length) % visibleItems.length;
+        }
+        setHighlighted(visibleItems[prevIdx]);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        const visibleItems = optionsList.querySelectorAll('.ss-option-item:not([style*="display: none"])');
-        if (visibleItems.length === 1) {
+        const highlighted = visibleItems.find(el => el.classList.contains('highlighted'));
+        if (highlighted) {
+          highlighted.click();
+        } else if (visibleItems.length === 1) {
           visibleItems[0].click();
+        } else {
+          const selected = visibleItems.find(el => el.classList.contains('selected'));
+          if (selected) {
+            selected.click();
+          } else if (visibleItems.length > 0) {
+            visibleItems[0].click();
+          }
         }
       }
     });
@@ -651,6 +785,11 @@ function updateSearchableSelectUI(id) {
       li.textContent = opt.text;
     }
 
+    li.addEventListener('mouseenter', () => {
+      optionsList.querySelectorAll('.ss-option-item.highlighted').forEach(i => i.classList.remove('highlighted'));
+      li.classList.add('highlighted');
+    });
+
     li.addEventListener('click', (e) => {
       e.stopPropagation();
       sel.value = opt.value;
@@ -774,8 +913,7 @@ function renderFilterDropdowns(opts) {
   liveDashboard.allYears = opts.years || [];
   liveDashboard.allMonths = opts.months || [];
 
-  fillSelectOptions('regionFilter', opts.regions, 'جميع المناطق', liveDashboard.filters.region);
-  fillSelectOptions('cityFilter', opts.cities, 'جميع المدن', liveDashboard.filters.city);
+  fillSelectOptions('regionFilter', opts.regions, 'جميع المحافظات', liveDashboard.filters.region);
   fillSelectOptions('repFilter', opts.reps, 'جميع المندوبين', liveDashboard.filters.rep);
   fillSelectOptions('customerFilter', opts.customers, 'جميع العملاء', liveDashboard.filters.customer);
   fillSelectOptions('catFilter', opts.categories, 'جميع الفئات', liveDashboard.filters.category);
@@ -1771,11 +1909,11 @@ function renderRegionalChart(charts) {
 
   const countBadge = document.getElementById('geoChartCountBadge');
   if (countBadge && charts.regional) {
-    countBadge.textContent = `📍 ${formatCount(charts.regional.length)} مدينة / منطقة`;
+    countBadge.textContent = `📍 ${formatCount(charts.regional.length)} محافظة`;
   }
 
   window._lastGeoChartData = regional.map(r => ({
-    'المدينة / المنطقة': r.name,
+    'المحافظة': r.name,
     'المبيعات': r.sales,
     'إجمالي الكمية المباعة': r.grossQty || 0,
     'صافي الكمية المباعة': r.netQty || 0,
@@ -1837,7 +1975,7 @@ function renderRegionalChart(charts) {
             drawBorder: false
           },
           ticks: {
-            autoSkip: false, // Never skip any city!
+            autoSkip: false,
             color: cColors.textColor,
             maxRotation: 40,
             minRotation: 20,
@@ -1999,49 +2137,15 @@ function renderRepsTable(reps) {
 
 function getDrilldownGroupByKeys() {
   const select = document.getElementById('groupByFilter');
-  if (!select) return ['region', 'city', 'rep'];
+  if (!select) return ['region', 'rep'];
   const selected = Array.from(select.selectedOptions).map(opt => opt.value);
-  return selected.length ? selected : ['region', 'city', 'rep'];
+  return selected.length ? selected : ['region', 'rep'];
 }
 
 function onGroupByFilterChange() {
   if (!liveDashboard.expandedDrillPaths) liveDashboard.expandedDrillPaths = new Set();
   liveDashboard.expandedDrillPaths.clear();
   renderDrilldownTable();
-}
-
-function parseClientCity(cityName, customerName, stateName) {
-  let c = (cityName && typeof cityName === 'string' && cityName.trim() && cityName.trim() !== 'غير محدد') ? cityName.trim() : '';
-  if (c && stateName && c.replace(/\s+/g, '') === stateName.replace(/\s+/g, '')) {
-    c = '';
-  }
-  if (!c && customerName) {
-    if (customerName.includes('/')) {
-      const parts = customerName.split('/');
-      if (parts.length > 1) {
-        c = parts[parts.length - 1].trim().split('-')[0].trim();
-      }
-    } else if (customerName.includes('(') && customerName.includes(')')) {
-      const match = customerName.match(/\((.*?)\)/);
-      if (match) {
-        c = match[1].split('-')[0].trim();
-      }
-    } else if (customerName.includes('-')) {
-      const parts = customerName.split('-');
-      if (parts.length > 1) {
-        c = parts[1].trim();
-      }
-    }
-  }
-  if (c) {
-    const govSuffixes = ['المنيا', 'بني سويف', 'بنى سويف', 'أسيوط', 'اسيوط', 'سوهاج', 'قنا', 'الأقصر', 'الاقصر', 'أسوان', 'اسوان', 'الجيزة', 'القاهرة'];
-    govSuffixes.forEach(gov => {
-      if (c.endsWith(' ' + gov) && c.length > gov.length + 2) {
-        c = c.slice(0, -(gov.length + 1)).trim();
-      }
-    });
-  }
-  return c || 'غير محدد';
 }
 
 function getDrilldownFlatRecords() {
@@ -2055,7 +2159,6 @@ function getDrilldownFlatRecords() {
     if (c.customers && Array.isArray(c.customers)) {
       c.customers.forEach(sub => {
         const subState = sub.state || c.name || 'غير محدد';
-        const cleanCity = parseClientCity(sub.city, sub.name, subState);
         const cGross = Number(sub.gross !== undefined && sub.gross !== null ? sub.gross : (Number(sub.sales || 0) + Number(sub.returns || 0))) || 0;
         const cReturns = Number(sub.returns || 0);
         const cSales = Number(sub.sales !== undefined && sub.sales !== null ? sub.sales : Math.max(0, cGross - cReturns)) || 0;
@@ -2065,7 +2168,6 @@ function getDrilldownFlatRecords() {
           customer: sub.name || 'عميل غير محدد',
           state: subState,
           region: subState,
-          city: cleanCity,
           rep: sub.rep || 'غير محدد',
           sales: round2(cSales),
           gross: round2(cGross),
@@ -2081,7 +2183,6 @@ function getDrilldownFlatRecords() {
       });
     } else {
       const cState = c.state || c.region || 'غير محدد';
-      const cleanCity = parseClientCity(c.city, c.name, cState);
       const cGross = Number(c.gross !== undefined && c.gross !== null ? c.gross : (Number(c.sales || 0) + Number(c.returns || 0))) || 0;
       const cReturns = Number(c.returns || 0);
       const cSales = Number(c.sales !== undefined && c.sales !== null ? c.sales : Math.max(0, cGross - cReturns)) || 0;
@@ -2091,7 +2192,6 @@ function getDrilldownFlatRecords() {
         customer: c.name || 'عميل غير محدد',
         state: cState,
         region: cState,
-        city: cleanCity,
         rep: c.rep || 'غير محدد',
         sales: round2(cSales),
         gross: round2(cGross),
@@ -2110,12 +2210,11 @@ function getDrilldownFlatRecords() {
 }
 
 function buildDrilldownTree(records, groupKeys) {
-  if (!groupKeys || !groupKeys.length) groupKeys = ['region', 'city', 'rep'];
+  if (!groupKeys || !groupKeys.length) groupKeys = ['region', 'rep'];
 
   const getDimensionValue = (item, dim) => {
     switch (dim) {
       case 'region': return item.state || item.region || 'غير محدد';
-      case 'city': return item.city || 'غير محدد';
       case 'rep': return item.rep || 'غير محدد';
       case 'customer': return item.name || item.customer || 'غير محدد';
       case 'category': return item.category || 'غير محدد';
@@ -2127,7 +2226,6 @@ function buildDrilldownTree(records, groupKeys) {
   const getDimensionLabel = (dim) => {
     switch (dim) {
       case 'region': return 'المنطقة';
-      case 'city': return 'المدينة';
       case 'rep': return 'المندوب';
       case 'customer': return 'العميل';
       case 'category': return 'الفئة';
@@ -2139,7 +2237,6 @@ function buildDrilldownTree(records, groupKeys) {
   const getDimensionIcon = (dim) => {
     switch (dim) {
       case 'region': return '📍';
-      case 'city': return '🏙️';
       case 'rep': return '👤';
       case 'customer': return '🏢';
       case 'category': return '🏷️';
@@ -2332,8 +2429,8 @@ function renderDrilldownTable(drilldown) {
     const escapedPath = node.path.replace(/'/g, "\\'");
     const indentPx = 16 + (node.level - 1) * 32;
 
-    const levelClass = node.dim === 'region' ? 'level-state' : (node.dim === 'city' ? 'level-city' : (node.dim === 'rep' ? 'level-rep' : 'level-cust'));
-    const nameClass = node.dim === 'region' ? 'state' : (node.dim === 'city' ? 'city' : (node.dim === 'rep' ? 'rep' : 'cust'));
+    const levelClass = node.dim === 'region' ? 'level-state' : (node.dim === 'rep' ? 'level-rep' : 'level-cust');
+    const nameClass = node.dim === 'region' ? 'state' : (node.dim === 'rep' ? 'rep' : 'cust');
 
     let subCountBadge = '';
     if (!node.isLeaf && node.children && node.children.length) {
@@ -2800,27 +2897,41 @@ function onCustomDropdownChange() {
 
 function onDataSourceChange() {
   const sourceEl = document.getElementById('dataSourceFilter');
+  onDashboardPageChange(sourceEl?.value || 'postedInvoice');
+}
+
+function onDashboardPageChange(source) {
+  const nextSource = source === 'salesOrder' ? 'salesOrder' : 'postedInvoice';
+  const currentSource = liveDashboard.filters.source || 'postedInvoice';
+  if (nextSource === currentSource) return;
+
+  captureSourcePageFilters(currentSource);
+  liveDashboard.filters.source = nextSource;
+  const sourceEl = document.getElementById('dataSourceFilter');
+  if (sourceEl) sourceEl.value = nextSource;
+  restoreSourcePageFilters(nextSource);
+
   const statusEl = document.getElementById('salesOrderStatusFilter');
-  const compEl = document.getElementById('comparisonFilter');
-  const val = sourceEl?.value || 'postedInvoice';
-  liveDashboard.filters.source = val;
-  if (statusEl) {
-    statusEl.hidden = val !== 'salesOrder';
-    if (val === 'salesOrder') {
-      liveDashboard.filters.salesOrderStatus = statusEl.value || 'all';
-    }
-  }
-  if (compEl) {
-    compEl.hidden = false;
-    compEl.style.display = '';
-  }
-  markFiltersPending();
+  if (statusEl) statusEl.hidden = nextSource !== 'salesOrder';
+  document.querySelectorAll('.source-tab[data-source]').forEach(tab => {
+    const selected = tab.dataset.source === nextSource;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  const activeTab = document.querySelector(`.source-tab[data-source="${nextSource}"]`);
+  document.getElementById('dashboardPagePanel')?.setAttribute('aria-labelledby', activeTab?.id || '');
+
+  clearFiltersPending();
+  liveDashboard.data = liveDashboard.pages[nextSource].data;
+  if (liveDashboard.data) renderAllDashboardComponents();
+  loadLiveDashboard();
 }
 
 function onSalesOrderStatusChange() {
   const statusEl = document.getElementById('salesOrderStatusFilter');
   if (statusEl) {
     liveDashboard.filters.salesOrderStatus = statusEl.value || 'all';
+    liveDashboard.sourceFilters.salesOrder.salesOrderStatus = liveDashboard.filters.salesOrderStatus;
   }
   markFiltersPending();
 }
@@ -2834,7 +2945,6 @@ function applyLiveFilters() {
   }
   const getVal = (id) => document.getElementById(id)?.value || '';
   liveDashboard.filters.region = getVal('regionFilter');
-  liveDashboard.filters.city = getVal('cityFilter');
   liveDashboard.filters.rep = getVal('repFilter');
   liveDashboard.filters.customer = getVal('customerFilter');
   liveDashboard.filters.category = getVal('catFilter');
@@ -2847,6 +2957,7 @@ function applyLiveFilters() {
   document.getElementById('matrixTabNone')?.classList.toggle('active', compVal === 'none');
   liveDashboard.filters.source = getVal('dataSourceFilter') || 'postedInvoice';
   liveDashboard.filters.salesOrderStatus = getVal('salesOrderStatusFilter') || 'all';
+  captureSourcePageFilters(liveDashboard.filters.source);
 
   const statusControl = document.getElementById('salesOrderStatusFilter');
   if (statusControl) statusControl.hidden = liveDashboard.filters.source !== 'salesOrder';
@@ -3099,7 +3210,7 @@ function filterChurnModalTable() {
     const currentRisk = isHigh ? 'مرتفع' : 'متوسط';
     if (riskFilter !== 'all' && currentRisk !== riskFilter) return false;
     if (q) {
-      const txt = `${w.name} ${w.state || ''} ${w.city || ''} ${w.rep || ''}`.toLowerCase();
+      const txt = `${w.name} ${w.state || ''} ${w.rep || ''}`.toLowerCase();
       if (!txt.includes(q)) return false;
     }
     return true;
@@ -3181,7 +3292,6 @@ function exportChurnWarningsToExcel() {
   const rows = warnings.map(w => ({
     'اسم العميل': w.name,
     'المحافظة / المنطقة': w.state || 'غير محدد',
-    'المدينة': w.city || 'غير محدد',
     'المندوب': w.rep || 'غير محدد',
     'مبيعات الفترة السابقة (ج.م)': w.previousSales || 0,
     'مبيعات الفترة الحالية (ج.م)': w.currentSales || 0,
@@ -3268,17 +3378,17 @@ function openKpiDrilldown(kpiKey, kpiTitle) {
   if (searchInput) {
     searchInput.value = '';
     if (isReturnKpi) {
-      searchInput.placeholder = 'بحث برقم إشعار الدائن، اسم العميل، المندوب، أو المدينة...';
+      searchInput.placeholder = 'بحث برقم إشعار الدائن، اسم العميل، المندوب، أو المحافظة...';
     } else if (isAvg) {
       searchInput.placeholder = isSO
-        ? 'بحث برقم أمر البيع، اسم العميل، المندوب، أو المدينة...'
-        : 'بحث برقم الفاتورة، اسم العميل، المندوب، أو المدينة...';
+        ? 'بحث برقم أمر البيع، اسم العميل، المندوب، أو المحافظة...'
+        : 'بحث برقم الفاتورة، اسم العميل، المندوب، أو المحافظة...';
     } else if (isCollectedPayment) {
-      searchInput.placeholder = 'بحث برقم السند، اسم العميل، الخزينة/البنك، المندوب، أو المدينة...';
+      searchInput.placeholder = 'بحث برقم السند، اسم العميل، الخزينة/البنك، المندوب، أو المحافظة...';
     } else {
       searchInput.placeholder = isSO
-        ? 'بحث برقم أمر البيع، اسم العميل، المندوب، أو المدينة...'
-        : 'بحث برقم المستند، اسم العميل، المندوب، أو المدينة...';
+        ? 'بحث برقم أمر البيع، اسم العميل، المندوب، أو المحافظة...'
+        : 'بحث برقم المستند، اسم العميل، المندوب، أو المحافظة...';
     }
   }
   if (statusFilter) {
@@ -3335,7 +3445,7 @@ function openKpiDrilldown(kpiKey, kpiTitle) {
           <th>نوع المستند</th>
           <th>العميل</th>
           <th>المندوب</th>
-          <th>المنطقة / المدينة</th>
+          <th>المحافظة</th>
           <th>تاريخ إشعار الدائن</th>
           <th>قيمة المرتجع</th>
           <th>المسدد / المردود</th>
@@ -3352,7 +3462,7 @@ function openKpiDrilldown(kpiKey, kpiTitle) {
           <th>نوع الحركة / الخزينة</th>
           <th>العميل</th>
           <th>المندوب</th>
-          <th>المنطقة / المدينة</th>
+          <th>المحافظة</th>
           <th>تاريخ التحصيل</th>
           <th>المبلغ المحصل</th>
           <th>المسدد للخزينة</th>
@@ -3369,7 +3479,7 @@ function openKpiDrilldown(kpiKey, kpiTitle) {
           <th>النوع</th>
           <th>العميل</th>
           <th>المندوب</th>
-          <th>المنطقة / المدينة</th>
+          <th>المحافظة</th>
           <th>${isSO ? 'تاريخ أمر البيع' : 'تاريخ المستند'}</th>
           <th>إجمالي القيمة</th>
           <th>${isSO ? 'القيمة المؤكدة' : 'المسدد'}</th>
@@ -3420,9 +3530,6 @@ function openKpiDrilldown(kpiKey, kpiTitle) {
   if (liveDashboard.filters.region) {
     filterDesc += ` | المنطقة: ${liveDashboard.filters.region}`;
   }
-  if (liveDashboard.filters.city) {
-    filterDesc += ` | المدينة: ${liveDashboard.filters.city}`;
-  }
   if (filterSummaryEl) filterSummaryEl.textContent = filterDesc;
 
   // Reset counters
@@ -3468,12 +3575,15 @@ function openKpiDrilldown(kpiKey, kpiTitle) {
   if (liveDashboard.filters.rep) params.set('rep', liveDashboard.filters.rep);
   if (liveDashboard.filters.customer) params.set('customer', liveDashboard.filters.customer);
   if (liveDashboard.filters.region) params.set('region', liveDashboard.filters.region);
-  if (liveDashboard.filters.city) params.set('city', liveDashboard.filters.city);
   if (liveDashboard.filters.product) params.set('product', liveDashboard.filters.product);
   if (liveDashboard.filters.category) params.set('category', liveDashboard.filters.category);
   if (liveDashboard.filters.query) params.set('query', liveDashboard.filters.query);
 
-  fetch(`/api/dashboard/kpi-drilldown?${params.toString()}`, { credentials: 'same-origin' })
+  const source = liveDashboard.filters.source || 'postedInvoice';
+  const endpoint = source === 'salesOrder'
+    ? '/api/dashboard/sales-orders/kpi-drilldown'
+    : '/api/dashboard/posted-invoices/kpi-drilldown';
+  fetch(`${endpoint}?${params.toString()}`, { credentials: 'same-origin' })
     .then(res => {
       if (!res.ok) {
         return res.json().catch(() => ({})).then(failure => {
@@ -3630,7 +3740,7 @@ function filterKpiDrilldownTable() {
       }
     }
     if (q) {
-      const txt = `${r.name || ''} ${r.customer || ''} ${r.rep || ''} ${r.city || ''} ${r.region || ''} ${r.ref || ''} ${r.journal || ''} ${r.typeLabel || ''} ${r.paymentState || ''}`.toLowerCase();
+      const txt = `${r.name || ''} ${r.customer || ''} ${r.rep || ''} ${r.region || ''} ${r.ref || ''} ${r.journal || ''} ${r.typeLabel || ''} ${r.paymentState || ''}`.toLowerCase();
       if (!txt.includes(q)) return false;
     }
     return true;
@@ -3711,7 +3821,7 @@ function filterKpiDrilldownTable() {
         </td>
         <td><strong>${r.customer}</strong></td>
         <td>${r.rep}</td>
-        <td>${r.region !== 'غير محدد' ? `${r.region} - ${r.city}` : r.city}</td>
+        <td>${r.region || 'غير محدد'}</td>
         <td style="font-size:12px;font-family:'Albert Sans', monospace;">${r.date}</td>
         <td style="font-weight:700;${amountClass}">${isRefund ? `-${formatMoney(Math.abs(r.amount))}` : formatMoney(r.amount)}</td>
         <td style="color:${isRefund ? (r.paid > 0 ? 'var(--ks-success)' : 'var(--ks-text-muted)') : 'var(--ks-success)'};">${displayPaid}</td>
@@ -3758,7 +3868,7 @@ function exportKpiDrilldownToExcel() {
       }
     }
     if (q) {
-      const txt = `${r.name || ''} ${r.customer || ''} ${r.rep || ''} ${r.city || ''} ${r.region || ''} ${r.ref || ''} ${r.journal || ''} ${r.typeLabel || ''}`.toLowerCase();
+      const txt = `${r.name || ''} ${r.customer || ''} ${r.rep || ''} ${r.region || ''} ${r.ref || ''} ${r.journal || ''} ${r.typeLabel || ''}`.toLowerCase();
       if (!txt.includes(q)) return false;
     }
     return true;
@@ -3783,7 +3893,6 @@ function exportKpiDrilldownToExcel() {
         'العميل': r.customer || '',
         'المندوب': r.rep || '',
         'المنطقة / المحافظة': r.region || '',
-        'المدينة': r.city || '',
         'تاريخ إشعار الدائن': r.date || '',
         'قيمة المرتجع (ج.م)': r.amount,
         'المسدد / المردود (ج.م)': r.paid,
@@ -3801,7 +3910,6 @@ function exportKpiDrilldownToExcel() {
         'العميل': r.customer || '',
         'المندوب': r.rep || '',
         'المنطقة / المحافظة': r.region || '',
-        'المدينة': r.city || '',
         'تاريخ التحصيل': r.date || '',
         'المبلغ المحصل (ج.م)': r.amount,
         'المسدد للخزينة (ج.م)': r.paid,
@@ -3817,7 +3925,6 @@ function exportKpiDrilldownToExcel() {
       'العميل': r.customer || '',
       'المندوب': r.rep || '',
       'المنطقة / المحافظة': r.region || '',
-      'المدينة': r.city || '',
       'التاريخ': r.date || '',
       'إجمالي القيمة (ج.م)': r.amount,
       [isSO ? 'القيمة المؤكدة (ج.م)' : 'المسدد / المحصل (ج.م)']: r.paid,
@@ -3955,9 +4062,8 @@ function exportDetailTableToExcel() {
   const flatRows = [];
   drilldown.forEach(reg => {
     flatRows.push({
-      'المستوى': 'محافظة / منطقة',
-      'المحافظة / المنطقة': reg.name,
-      'المدينة': '—',
+      'المستوى': 'محافظة',
+      'المحافظة': reg.name,
       'العميل': '—',
       'المندوب': '—',
       'عدد الفواتير': reg.invoices || 0,
@@ -3974,8 +4080,7 @@ function exportDetailTableToExcel() {
     (reg.customers || []).forEach(cust => {
       flatRows.push({
         'المستوى': 'عميل',
-        'المحافظة / المنطقة': cust.state,
-        'المدينة': cust.city,
+        'المحافظة': cust.state,
         'العميل': cust.name,
         'المندوب': cust.rep,
         'عدد الفواتير': cust.invoices || 0,
@@ -4227,6 +4332,21 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('dataSourceFilter')?.addEventListener('change', onDataSourceChange);
   document.getElementById('salesOrderStatusFilter')?.addEventListener('change', onSalesOrderStatusChange);
+  document.getElementById('dashboardPageTabs')?.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const tabs = [...document.querySelectorAll('.source-tab[data-source]')];
+    if (!tabs.length) return;
+    event.preventDefault();
+    const currentIndex = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+    const rtl = document.documentElement.dir === 'rtl';
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? (rtl ? -1 : 1) : (rtl ? 1 : -1)) + tabs.length) % tabs.length;
+    tabs[nextIndex].focus();
+    tabs[nextIndex].click();
+  });
   document.getElementById('comparisonFilter')?.addEventListener('change', (e) => {
     const val = e.target?.value || 'previousPeriod';
     document.getElementById('matrixTabPrev')?.classList.toggle('active', val === 'previousPeriod');
@@ -4309,6 +4429,7 @@ window.exportProductChartToExcel = exportProductChartToExcel;
 window.exportGrowthChartToExcel = exportGrowthChartToExcel;
 window.exportGeoChartToExcel = exportGeoChartToExcel;
 window.onDataSourceChange = onDataSourceChange;
+window.onDashboardPageChange = onDashboardPageChange;
 window.onSalesOrderStatusChange = onSalesOrderStatusChange;
 window.onCustomDateRangeChange = onCustomDateRangeChange;
 window.onCustomDropdownChange = onCustomDropdownChange;

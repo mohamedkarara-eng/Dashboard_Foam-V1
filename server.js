@@ -339,44 +339,28 @@ async function odooExecuteKw(uid, password, model, method, args = [], kwargs = {
   let lastErr = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      return await odooCall('object', 'execute_kw', [
-        ODOO_DB,
-        uid,
-        password,
-        model,
-        method,
-        args,
-        kwargs
-      ]);
+      return await odooCall('object', 'execute_kw', [ODOO_DB, uid, password, model, method, args, kwargs]);
     } catch (err) {
       lastErr = err;
       const isAuthErr = /access denied|invalid credentials/i.test(String(err.message || ''));
       if (isAuthErr || attempt === 2) throw err;
       console.warn(`[Odoo] ${model}.${method} attempt ${attempt} failed, retrying...`, err.message);
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
   throw lastErr;
 }
 
-// Helper to get active credentials (session or system default)
 async function getAuthCredentials(req) {
   const session = getSession(req);
   if (session && session.uid && session.password) {
     return { uid: session.uid, password: session.password, username: session.username };
   }
-
-  // Only fall back to a shared system login when explicitly allowed.
   if (!ALLOW_PUBLIC_ACCESS) return null;
 
   let defaultAuth = getCached('default_auth');
   if (!defaultAuth) {
-    const uid = await odooCall('common', 'authenticate', [
-      ODOO_DB,
-      ODOO_DEFAULT_USER,
-      ODOO_DEFAULT_PASS,
-      {}
-    ]);
+    const uid = await odooCall('common', 'authenticate', [ODOO_DB, ODOO_DEFAULT_USER, ODOO_DEFAULT_PASS, {}]);
     if (uid) {
       defaultAuth = { uid, password: ODOO_DEFAULT_PASS, username: ODOO_DEFAULT_USER };
       setCached('default_auth', defaultAuth, 60 * 60 * 1000);
@@ -392,20 +376,14 @@ function setSessionCookie(res, token, req) {
   const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
   const secure = (isHttps || (isProd && !isLocal)) ? '; Secure' : '';
   const maxAge = Math.floor(SESSION_TTL_MS / 1000);
-  res.setHeader(
-    'Set-Cookie',
-    `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`
-  );
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`);
 }
 
-// Blocks the dashboard page itself for anyone without a valid session,
-// so the login screen is actually enforced instead of just decorative.
 function requirePageAuth(req, res, next) {
   if (ALLOW_PUBLIC_ACCESS || getSession(req)) return next();
   return res.redirect('/login.html');
 }
 
-// Routes
 app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, 'login.html')));
 app.get('/', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, 'Dashboard_Foam.html')));
 app.get('/Dashboard_Foam.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, 'Dashboard_Foam.html')));
@@ -416,35 +394,23 @@ app.get('/api/me', (req, res) => {
   return res.json({ authenticated: true, uid: session.uid, username: session.username });
 });
 
-// Health Check
 app.get('/api/odoo-health', async (req, res) => {
   try {
     const version = await odooCall('common', 'version', []);
-    res.json({
-      status: 'ok',
-      host,
-      database: ODOO_DB,
-      serverVersion: version?.server_version || '19.0+e',
-      cache: getCacheStats()
-    });
+    res.json({ status: 'ok', host, database: ODOO_DB, serverVersion: version?.server_version || '19.0+e', cache: getCacheStats() });
   } catch (error) {
     console.error('Odoo health check failed:', error.message);
     res.status(502).json({ status: 'error', error: 'تعذر الاتصال بـ Odoo XML-RPC', cache: getCacheStats() });
   }
 });
 
-// Login
 app.post('/api/login', async (req, res) => {
   const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
-  if (!username || !password) {
-    return res.status(400).json({ error: 'يرجى إدخال البريد الإلكتروني وكلمة المرور' });
-  }
+  if (!username || !password) return res.status(400).json({ error: 'يرجى إدخال البريد الإلكتروني وكلمة المرور' });
   try {
     const uid = await odooCall('common', 'authenticate', [ODOO_DB, username, password, {}]);
-    if (!uid) {
-      return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
-    }
+    if (!uid) return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
     const sessionData = { uid, username, password, expiresAt: Date.now() + SESSION_TTL_MS };
     const token = createSessionToken(sessionData);
     sessions.set(token, sessionData);
@@ -456,7 +422,6 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Logout
 app.post('/api/logout', (req, res) => {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (token) sessions.delete(token);
@@ -464,7 +429,46 @@ app.post('/api/logout', (req, res) => {
   res.json({ status: 'success' });
 });
 
-// Audit: raw Odoo totals for cross-checking dashboard numbers (read-only)
+app.get('/api/debug-reps', async (req, res) => {
+  try {
+    let auth = await getAuthCredentials(req);
+    if (!auth) {
+      for (const s of sessions.values()) {
+        if (s && s.uid && s.password) { auth = s; break; }
+      }
+    }
+    if (!auth) return res.status(401).json({ error: 'No active session' });
+
+    const moveFields = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'fields_get', [], { attributes: ['string', 'type', 'relation', 'store'] });
+    const matchingFields = Object.entries(moveFields).filter(([k, v]) => {
+      const s = String(v.string || '');
+      return s.includes('مندوب') || s.toLowerCase().includes('sales') || k.includes('user') || k.includes('rep') || k.includes('seller');
+    });
+
+    const results = {};
+    for (const [name, info] of matchingFields) {
+      try {
+        const domain = [['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']]];
+        const groups = await odooExecuteKw(
+          auth.uid,
+          auth.password,
+          'account.move',
+          'read_group',
+          [domain, ['amount_total:sum'], [name], 0, 500, false, false],
+          { context: { active_test: false } }
+        );
+        results[name] = { info, groupsCount: groups?.length || 0, groups };
+      } catch (err) {
+        results[name] = { info, error: err.message };
+      }
+    }
+
+    res.json({ matchingFields, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/dashboard/audit', async (req, res) => {
   try {
     const auth = await getAuthCredentials(req);
@@ -477,27 +481,20 @@ app.get('/api/dashboard/audit', async (req, res) => {
     const status = String(req.query.status || 'post').toLowerCase();
     const stateClause = status === 'post' ? ['state', 'in', ['sale', 'done']]
       : status === 'draft' ? ['state', 'in', ['draft', 'sent']] : ['state', '!=', 'cancel'];
-
-    // Cairo offset (hours) for the start date, e.g. +3 in summer
     const offsetHours = (() => {
       try {
-        const d = new Date(`${start}T12:00:00Z`);
-        const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).formatToParts(d);
-        return Number(parts.find(p => p.type === 'hour').value) - 12;
-      } catch (e) { return 2; }
+        const date = new Date(`${start}T12:00:00Z`);
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).formatToParts(date);
+        return Number(parts.find(part => part.type === 'hour').value) - 12;
+      } catch (error) { return 2; }
     })();
     const shift = (dateStr, endOfDay) => {
       const base = new Date(`${dateStr}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
       base.setUTCHours(base.getUTCHours() - offsetHours);
       return base.toISOString().replace('T', ' ').slice(0, 19);
     };
-
-    const ranges = {
-      utc: [`${start} 00:00:00`, `${end} 23:59:59`],
-      cairo: [shift(start, false), shift(end, true)]
-    };
+    const ranges = { utc: [`${start} 00:00:00`, `${end} 23:59:59`], cairo: [shift(start, false), shift(end, true)] };
     const out = { offsetHours, ranges, status };
-
     for (const [key, [from, to]] of Object.entries(ranges)) {
       const domain = [['date_order', '>=', from], ['date_order', '<=', to], stateClause];
       const [total, byRep] = await Promise.all([
@@ -508,37 +505,21 @@ app.get('/api/dashboard/audit', async (req, res) => {
         count: total?.[0]?.__count || 0,
         amount_total: total?.[0]?.amount_total || 0,
         amount_untaxed: total?.[0]?.amount_untaxed || 0,
-        byRep: (byRep || []).map(g => ({
-          rep: g.user_id ? g.user_id[1] : 'غير محدد',
-          count: g.__count ?? g.user_id_count,
-          amount_total: g.amount_total
-        })).sort((a, b) => b.amount_total - a.amount_total)
+        byRep: (byRep || []).map(group => ({ rep: group.user_id ? group.user_id[1] : 'غير محدد', count: group.__count ?? group.user_id_count, amount_total: group.amount_total })).sort((a, b) => b.amount_total - a.amount_total)
       };
     }
-
-    // Discover custom region / city fields on sale.order (labels containing منطقة / مدينة)
-    const fields = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'fields_get', [], { attributes: ['string', 'type', 'relation'] });
-    out.regionLikeFields = Object.entries(fields || {})
-      .filter(([name, f]) => /منطق|مدين|region|city|area|zone/i.test(`${f.string} ${name}`))
-      .map(([name, f]) => ({ name, label: f.string, type: f.type, relation: f.relation || null }));
-
     out.resolvedCustomFields = await getSoCustomFields(auth);
     res.json(out);
-  } catch (e) {
-    res.status(500).json({ error: sanitizeErrorMessage(e), raw: String(e.message || e) });
+  } catch (error) {
+    res.status(500).json({ error: sanitizeErrorMessage(error), raw: String(error.message || error) });
   }
 });
 
-// Cache Clear
 app.post('/api/dashboard/refresh', async (req, res) => {
   const auth = await getAuthCredentials(req);
   if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
   clearCache();
-  res.json({
-    status: 'success',
-    message: 'تم تحديث الذاكرة المؤقتة بنجاح',
-    stats: getCacheStats()
-  });
+  res.json({ status: 'success', message: 'تم تحديث الذاكرة المؤقتة بنجاح', stats: getCacheStats() });
 });
 
 // Helper: Build Date Domain
@@ -619,9 +600,9 @@ function resolveCategoryId(queryCat, categoriesList) {
   if (!queryCat || typeof queryCat !== 'string') return null;
   const trimmed = queryCat.trim();
   if (!trimmed) return null;
-  const match = (categoriesList || []).find(c => 
-    c.name === trimmed || 
-    c.leafName === trimmed || 
+  const match = (categoriesList || []).find(c =>
+    c.name === trimmed ||
+    c.leafName === trimmed ||
     c.complete_name === trimmed ||
     c.rootName === trimmed ||
     c.name.endsWith('/ ' + trimmed)
@@ -633,49 +614,132 @@ function resolveCategoryId(queryCat, categoriesList) {
 function appendSalespersonFilter(domain, customField, repId, repName = null) {
   if (!customField?.name) {
     domain.push(['id', '=', -1]);
-  } else if (customField.type === 'many2one' && repId) {
+  } else if (repId === 'None' || repName === 'None') {
+    domain.push([customField.name, '=', false]);
+  } else if (customField.type === 'many2one' && repId && typeof repId === 'number') {
     domain.push([customField.name, '=', repId]);
   } else {
     domain.push([customField.name, '=', repName || repId]);
   }
 }
 
-async function getDistinctRepsFromDocuments(auth) {
-  const cacheKey = `distinct_doc_reps_v3_${auth.uid}`;
+async function getDistinctRepsFromDocuments(auth, source) {
+  const cacheKey = `distinct_reps_strict_v50_${source}_${auth.uid}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   const repsMap = new Map();
+  let hasNone = false;
+  const isSalesOrder = source === 'salesOrder';
 
-  const [moveFields, soFields] = await Promise.all([
-    getMoveCustomFields(auth).catch(() => ({ rep: null })),
-    getSoCustomFields(auth).catch(() => ({ rep: null }))
-  ]);
-  for (const [model, customField] of [['account.move', moveFields?.rep], ['sale.order', soFields?.rep]]) {
-    if (customField?.type !== 'many2one') continue;
-    try {
-      const groups = await odooExecuteKw(auth.uid, auth.password, model, 'read_group', [
-        [[customField.name, '!=', false]],
-        ['amount_total:sum'],
-        [customField.name]
-      ]);
-      (groups || []).forEach(group => {
-        const rep = group[customField.name];
-        if (rep?.[0] && rep?.[1]) repsMap.set(rep[0], { id: rep[0], name: rep[1] });
-      });
-    } catch (error) {
-      console.warn(`read_group ${model}.${customField.name} error:`, error.message);
+  if (isSalesOrder) {
+    const customFields = await getSoCustomFields(auth).catch(() => ({ rep: null }));
+    const repField = customFields?.rep?.name || 'user_id';
+    const fieldsToQuery = [...new Set([repField])].filter(Boolean);
+    for (const fieldName of fieldsToQuery) {
+      try {
+        const domain = [['state', '!=', 'cancel']];
+        const groups = await odooExecuteKw(
+          auth.uid,
+          auth.password,
+          'sale.order',
+          'read_group',
+          [domain, ['amount_total:sum'], [fieldName], 0, 500, false, false],
+          { context: { active_test: false } }
+        );
+        (groups || []).forEach(group => {
+          const rep = group[fieldName];
+          if (Array.isArray(rep) && rep[0]) {
+            const id = rep[0];
+            const name = rep[1] ? String(rep[1]).trim() : null;
+            if (!repsMap.has(String(id))) repsMap.set(String(id), { id, name });
+          } else if (typeof rep === 'string' && rep.trim() && rep !== 'false' && rep !== 'None') {
+            const name = rep.trim();
+            if (!repsMap.has(name)) repsMap.set(name, { id: name, name });
+          } else if (rep === false || rep === null || rep === 'None' || !rep) {
+            hasNone = true;
+          }
+        });
+      } catch (err) {
+        console.warn(`read_group sale.order ${fieldName} reps error:`, err.message);
+      }
+    }
+  } else {
+    // Posted Invoices & Credit Notes: Strictly query the custom studio salesperson fields from Odoo
+    const moveFields = await getMoveCustomFields(auth).catch(() => ({ invoiceRep: null, refundRep: null }));
+    const invField = moveFields?.invoiceRep?.name;
+    const refField = moveFields?.refundRep?.name || invField;
+
+    const fieldsToQuery = [...new Set([invField, refField])].filter(Boolean);
+    for (const fieldName of fieldsToQuery) {
+      try {
+        const domain = [['state', '=', 'posted'], ['move_type', 'in', ['out_invoice', 'out_refund']]];
+        const groups = await odooExecuteKw(
+          auth.uid,
+          auth.password,
+          'account.move',
+          'read_group',
+          [domain, ['amount_total:sum'], [fieldName], 0, 500, false, false],
+          { context: { active_test: false } }
+        );
+        (groups || []).forEach(group => {
+          const rep = group[fieldName];
+          if (Array.isArray(rep) && rep[0]) {
+            const id = rep[0];
+            const name = rep[1] ? String(rep[1]).trim() : null;
+            if (!repsMap.has(String(id))) repsMap.set(String(id), { id, name });
+          } else if (typeof rep === 'string' && rep.trim() && rep !== 'false' && rep !== 'None') {
+            const name = rep.trim();
+            if (!repsMap.has(name)) repsMap.set(name, { id: name, name });
+          } else if (rep === false || rep === null || rep === 'None' || !rep) {
+            hasNone = true;
+          }
+        });
+      } catch (err) {
+        console.warn(`read_group account.move ${fieldName} reps error:`, err.message);
+      }
     }
   }
 
-  const distinctReps = [...repsMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  // Resolve any missing user names (e.g. if archived) by querying res.users with active_test: false
+  const missingNameIds = [...repsMap.values()].filter(r => !r.name && typeof r.id === 'number').map(r => r.id);
+  if (missingNameIds.length > 0) {
+    try {
+      const users = await odooExecuteKw(
+        auth.uid,
+        auth.password,
+        'res.users',
+        'search_read',
+        [[['id', 'in', missingNameIds]]],
+        { fields: ['id', 'name'], context: { active_test: false } }
+      );
+      (users || []).forEach(u => {
+        if (repsMap.has(String(u.id)) && u.name) {
+          repsMap.set(String(u.id), { id: u.id, name: String(u.name).trim() });
+        }
+      });
+    } catch (err) {
+      console.warn('Failed to resolve missing user names:', err.message);
+    }
+  }
+
+  const distinctReps = [...repsMap.values()]
+    .map(r => ({ id: r.id, name: r.name || String(r.id) }))
+    .filter(r => r.name && r.name !== 'false' && r.name !== 'None')
+    .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+
+  if (hasNone) {
+    distinctReps.push({ id: 'None', name: 'None' });
+  }
+
   setCached(cacheKey, distinctReps, 10 * 60 * 1000);
   return distinctReps;
 }
 
-async function getDistinctRepNameById(auth, repId) {
+async function getDistinctRepNameById(auth, repId, source) {
   if (!repId) return null;
-  const reps = await getDistinctRepsFromDocuments(auth);
+  if (repId === 'None') return 'None';
+  const reps = await getDistinctRepsFromDocuments(auth, source);
   return reps.find(rep => String(rep.id) === String(repId))?.name || null;
 }
 
@@ -690,10 +754,10 @@ async function getDateFacets(auth, source) {
   const domain = isSalesOrder
     ? [['date_order', '!=', false]]
     : [
-        ['state', '=', 'posted'],
-        ['move_type', 'in', ['out_invoice', 'out_refund']],
-        ['invoice_date', '!=', false]
-      ];
+      ['state', '=', 'posted'],
+      ['move_type', 'in', ['out_invoice', 'out_refund']],
+      ['invoice_date', '!=', false]
+    ];
 
   const yearsSet = new Set();
   const currentYearNum = new Date().getFullYear();
@@ -883,208 +947,6 @@ function round2(val) {
   return Number.isFinite(num) ? Number(num.toFixed(2)) : 0;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Egyptian Cities & Governorates Dictionary for Accurate Geolocation
-// ─────────────────────────────────────────────────────────────
-const EGYPT_CITY_STATE_MAP = {
-  'دكرنس': 'الدقهلية',
-  'المنزلة': 'الدقهلية',
-  'محلة دمنة': 'الدقهلية',
-  'ميت غمر': 'الدقهلية',
-  'المنصورة': 'الدقهلية',
-  'بلقاس': 'الدقهلية',
-  'السنبلاوين': 'الدقهلية',
-  'شربين': 'الدقهلية',
-  'أجا': 'الدقهلية',
-  'طلخا': 'الدقهلية',
-  'منية النصر': 'الدقهلية',
-  'نبروه': 'الدقهلية',
-  'جمصة': 'الدقهلية',
-
-  'الشرقية': 'الشرقية',
-  'الزقازيق': 'الشرقية',
-  'العاشر من رمضان': 'الشرقية',
-  'العاشر': 'الشرقية',
-  'فاقوس': 'الشرقية',
-  'بلبيس': 'الشرقية',
-  'كفر صقر': 'الشرقية',
-  'مشتول السوق': 'الشرقية',
-  'مشتول': 'الشرقية',
-  'ابو حماد': 'الشرقية',
-  'أبو حماد': 'الشرقية',
-  'ابو كبير': 'الشرقية',
-  'أبو كبير': 'الشرقية',
-  'الحسينية': 'الشرقية',
-  'الصالحية': 'الشرقية',
-  'الصالحية الجديدة': 'الشرقية',
-  'ههيا': 'الشرقية',
-  'ديرب نجم': 'الشرقية',
-  'منيا القمح': 'الشرقية',
-  'الإبراهيمية': 'الشرقية',
-  'القنايات': 'الشرقية',
-  'أولاد صقر': 'الشرقية',
-
-  'كفر الشيخ': 'كفر الشيخ',
-  'دسوق': 'كفر الشيخ',
-  'فوه': 'كفر الشيخ',
-  'بيلا': 'كفر الشيخ',
-  'قلين': 'كفر الشيخ',
-  'سيدي سالم': 'كفر الشيخ',
-  'مطوبس': 'كفر الشيخ',
-  'الحامول': 'كفر الشيخ',
-
-  'الغربية': 'الغربية',
-  'طنطا': 'الغربية',
-  'المحلة الكبرى': 'الغربية',
-  'المحلة': 'الغربية',
-  'زفتى': 'الغربية',
-  'كفر الزيات': 'الغربية',
-  'سمنود': 'الغربية',
-  'بسيون': 'الغربية',
-
-  'دمياط': 'دمياط',
-  'رأس البر': 'دمياط',
-  'فارسكور': 'دمياط',
-  'الزرقا': 'دمياط',
-  'كفر سعد': 'دمياط',
-  'كفر البطيخ': 'دمياط',
-
-  'الفيوم': 'الفيوم',
-  'إبشواي': 'الفيوم',
-  'اطسا': 'الفيوم',
-  'طامية': 'الفيوم',
-  'سنورس': 'الفيوم',
-
-  'بني سويف': 'بني سويف',
-  'الواسطى': 'بني سويف',
-  'ناصر': 'بني سويف',
-  'ببا': 'بني سويف',
-  'الفشن': 'بني سويف',
-  'إهناسيا': 'بني سويف',
-
-  'المنيا': 'المنيا',
-  'ملوي': 'المنيا',
-  'مغاغة': 'المنيا',
-  'بني مزار': 'المنيا',
-  'سمالوط': 'المنيا',
-  'أبو قرقاص': 'المنيا',
-
-  'أسيوط': 'أسيوط',
-  'سوهاج': 'سوهاج',
-  'قنا': 'قنا',
-  'الأقصر': 'الأقصر',
-  'أسوان': 'أسوان',
-
-  'الاسكندرية': 'الاسكندرية',
-  'الإسكندرية': 'الاسكندرية',
-  'برج العرب': 'الاسكندرية',
-  'عزبة البرنس': 'الاسكندرية',
-
-  'الجيزة': 'الجيزة',
-  '6 أكتوبر': 'الجيزة',
-  'أكتوبر': 'الجيزة',
-  'الشيخ زايد': 'الجيزة',
-  'الهرم': 'الجيزة',
-  'فيصل': 'الجيزة',
-
-  'القاهرة': 'القاهرة',
-  'مدينة نصر': 'القاهرة',
-  'التجمع': 'القاهرة',
-  'المعادي': 'القاهرة',
-  'حلوان': 'القاهرة',
-
-  'السويس': 'السويس',
-  'الاسماعيلية': 'الاسماعيلية',
-  'الإسماعيلية': 'الاسماعيلية',
-  'القنطرة': 'الاسماعيلية',
-  'القنطرة غرب': 'الاسماعيلية',
-  'القنطرة شرق': 'الاسماعيلية',
-  'فايد': 'الاسماعيلية',
-  'التل الكبير': 'الاسماعيلية',
-  'القصاصين': 'الاسماعيلية',
-  'بورسعيد': 'بورسعيد',
-
-  'البحيرة': 'البحيرة',
-  'دمنهور': 'البحيرة',
-  'كفر الدوار': 'البحيرة',
-  'إيتاي البارود': 'البحيرة',
-  'أبو حمص': 'البحيرة',
-  'حوش عيسى': 'البحيرة',
-  'كوم حمادة': 'البحيرة',
-  'رشيد': 'البحيرة',
-  'إدكو': 'البحيرة',
-
-  'المنوفية': 'المنوفية',
-  'شبين الكوم': 'المنوفية',
-  'السادات': 'المنوفية',
-  'قويسنا': 'المنوفية',
-  'أشمون': 'المنوفية',
-  'منوف': 'المنوفية',
-  'الباجور': 'المنوفية',
-  'تلا': 'المنوفية',
-  'بركة السبع': 'المنوفية',
-
-  'القليوبية': 'القليوبية',
-  'بنها': 'القليوبية',
-  'شبرا الخيمة': 'القليوبية',
-  'طوخ': 'القليوبية',
-  'العبور': 'القليوبية',
-  'قليوب': 'القليوبية',
-  'الخانكة': 'القليوبية',
-  'شبين القناطر': 'القليوبية',
-  'كفر شكر': 'القليوبية',
-  'قها': 'القليوبية'
-};
-
-function resolvePartnerCityAndState(p, rawMap) {
-  let rawCity = (p?.city && typeof p.city === 'string') ? p.city.trim() : '';
-  let rawState = (p?.state_id && p.state_id[1]) ? p.state_id[1].replace(/\s*\(EG\)$/i, '').trim() : '';
-
-  // 1. If city missing, look up commercial partner or parent company
-  if (!rawCity && rawMap) {
-    const parentId = (p?.commercial_partner_id && p.commercial_partner_id[0])
-      ? p.commercial_partner_id[0]
-      : (p?.parent_id && p.parent_id[0] ? p.parent_id[0] : null);
-    if (parentId) {
-      const parent = rawMap.get(parentId);
-      if (parent?.city && typeof parent.city === 'string' && parent.city.trim()) {
-        rawCity = parent.city.trim();
-      }
-      if (!rawState && parent?.state_id && parent.state_id[1]) {
-        rawState = parent.state_id[1].replace(/\s*\(EG\)$/i, '').trim();
-      }
-    }
-  }
-
-  // 2. Scan partner name against known Egyptian cities ONLY (sorted by length descending for exact matching)
-  if (!rawCity && p?.name) {
-    const pName = String(p.name);
-    const sortedCities = Object.keys(EGYPT_CITY_STATE_MAP).sort((a, b) => b.length - a.length);
-    for (const knownCity of sortedCities) {
-      if (pName.includes(knownCity)) {
-        rawCity = knownCity;
-        if (!rawState) rawState = EGYPT_CITY_STATE_MAP[knownCity];
-        break;
-      }
-    }
-  }
-
-  // 3. Fallback to state as regional center (e.g. 'القليوبية' matching Odoo native row) to avoid 'غير محدد'
-  if (!rawCity && rawState) {
-    rawCity = rawState;
-  }
-
-  rawCity = (rawCity && rawCity !== 'غير محدد') ? rawCity : 'أخرى';
-
-  // 4. State deduction from city if missing
-  if (!rawState && rawCity !== 'أخرى') {
-    rawState = EGYPT_CITY_STATE_MAP[rawCity] || rawCity;
-  }
-  rawState = (rawState && rawState !== 'غير محدد') ? rawState : (rawCity !== 'أخرى' ? rawCity : 'أخرى');
-
-  return { city: rawCity, state: rawState };
-}
-
 function extractMoveAmount(summary) {
   if (!summary) return 0;
   if (summary.amount_total_signed !== undefined && summary.amount_total_signed !== null) {
@@ -1199,7 +1061,7 @@ async function buildGrowthAnalysis(auth, currentDomain, start, end, comparisonMo
   const previousCustomers = toCustomerMap(previousGroups);
   const customerIds = new Set([...currentCustomers.keys(), ...previousCustomers.keys()]);
   const customers = [...customerIds].map(id => {
-    const info = partnerMap.get(id) || { name: 'غير محدد', state: 'غير محدد', city: 'غير محدد', rep: 'غير محدد' };
+    const info = partnerMap.get(id) || { name: 'غير محدد', state: 'غير محدد', rep: 'غير محدد' };
     const currentSales = round2(Math.max(0, currentCustomers.get(id) || 0));
     const previousSales = round2(Math.max(0, previousCustomers.get(id) || 0));
     const growthAmount = round2(currentSales - previousSales);
@@ -1209,7 +1071,6 @@ async function buildGrowthAnalysis(auth, currentDomain, start, end, comparisonMo
       id,
       name: info.name || `عميل #${id}`,
       state: info.state || 'غير محدد',
-      city: info.city || 'غير محدد',
       rep: info.rep || 'غير محدد',
       currentSales,
       previousSales,
@@ -1407,19 +1268,19 @@ async function getProductCatalog(auth) {
 // Unified Partner Lookup Helper with Shared 1-Hour Cache
 // ─────────────────────────────────────────────────────────────
 async function getPartnersLookup(auth) {
-  let partnerMap = getCached('partners_map');
-  let allPartnersList = getCached('partners_list');
+  let partnerMap = getCached('partners_map_state_v2');
+  let allPartnersList = getCached('partners_list_state_v2');
   if (partnerMap && allPartnersList) {
     return { partnerMap, allPartnersList };
   }
 
   const rawPartners = await odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [
     []
-  ], { fields: ['id', 'name', 'state_id', 'city', 'phone', 'user_id', 'parent_id', 'commercial_partner_id'], limit: 50000 }).catch(err => {
+  ], { fields: ['id', 'name', 'state_id', 'phone', 'user_id', 'parent_id', 'commercial_partner_id'], limit: 50000 }).catch(err => {
     console.warn('search_read all partners failed, falling back to active query:', err.message);
     return odooExecuteKw(auth.uid, auth.password, 'res.partner', 'search_read', [
       ['|', ['customer_rank', '>', 0], ['active', '=', true]]
-    ], { fields: ['id', 'name', 'state_id', 'city', 'phone', 'user_id', 'parent_id', 'commercial_partner_id'], limit: 30000 }).catch(() => []);
+    ], { fields: ['id', 'name', 'state_id', 'phone', 'user_id', 'parent_id', 'commercial_partner_id'], limit: 30000 }).catch(() => []);
   });
 
   const rawMap = new Map((rawPartners || []).map(p => [p.id, p]));
@@ -1427,12 +1288,12 @@ async function getPartnersLookup(auth) {
   allPartnersList = [];
 
   (rawPartners || []).forEach(p => {
-    const { city, state } = resolvePartnerCityAndState(p, rawMap);
+    const state = p.state_id?.[1] ? String(p.state_id[1]).trim() : 'None';
     const partnerObj = {
       id: p.id,
       name: p.name,
+      odooState: state,
       state,
-      city,
       rep: (p.user_id && p.user_id[1]) ? p.user_id[1] : 'غير محدد',
       repId: (p.user_id && p.user_id[0]) ? p.user_id[0] : null,
       phone: p.phone || ''
@@ -1441,8 +1302,8 @@ async function getPartnersLookup(auth) {
     allPartnersList.push(partnerObj);
   });
 
-  setCached('partners_map', partnerMap, 60 * 60 * 1000);
-  setCached('partners_list', allPartnersList, 60 * 60 * 1000);
+  setCached('partners_map_state_v2', partnerMap, 60 * 60 * 1000);
+  setCached('partners_list_state_v2', allPartnersList, 60 * 60 * 1000);
   return { partnerMap, allPartnersList };
 }
 
@@ -1564,42 +1425,106 @@ function findMatchingField(entries, candidateLabels, excludeNames = []) {
 
 // Finds the custom fields Odoo's list view groups by. Cached for a day.
 async function getSoCustomFields(auth) {
-  const cacheKey = 'so_custom_fields_v3';
+  const cacheKey = 'so_custom_fields_v25';
   const cached = getCached(cacheKey);
   if (cached) return cached;
-  const result = { rep: null, region: null, city: null };
+  const result = { rep: null };
   try {
     const fields = await odooExecuteKw(auth.uid, auth.password, 'sale.order', 'fields_get', [], { attributes: ['string', 'type', 'relation', 'store'] });
-    const entries = Object.entries(fields || {}).filter(([, f]) => f.store !== false && ['many2one', 'char', 'selection'].includes(f.type));
+    const userEntries = Object.entries(fields || {}).filter(([, f]) => f.store !== false && f.type === 'many2one' && (f.relation === 'res.users' || f.relation === 'hr.employee'));
 
-    result.region = findMatchingField(entries, ['المنطقة الجغرافية', 'المنطقه الجغرافيه', 'المنطقة', 'المنطقه', 'منطقة جغرافية', 'منطقه جغرافيه', 'منطقة', 'منطقه', 'الإقليم', 'المحافظة', 'region', 'zone']);
-    result.rep = findMatchingField(entries, ['مندوب المبيعات', 'مندوب مبيعات', 'مندوب', 'المندوب', 'مسؤول المبيعات', 'البائع', 'salesperson', 'sales_person', 'rep']);
-    result.city = findMatchingField(entries, ['المدينة', 'المدينه', 'مدينة', 'مدينه', 'الفرع', 'city', 'branch']);
+    const match = userEntries.find(([name, f]) => {
+      const s = normalizeArabicLabel(f.string);
+      return (s.includes('مندوب') || s.includes('sales')) && name !== 'user_id';
+    });
+    if (match) {
+      result.rep = { name: match[0], type: 'many2one', relation: match[1].relation, label: match[1].string };
+    } else if (fields?.user_id) {
+      result.rep = { name: 'user_id', type: 'many2one', relation: 'res.users', label: fields.user_id.string || 'مندوب المبيعات' };
+    }
 
-    console.log('[SO] custom fields resolved:', JSON.stringify(result));
-    if (result.rep || result.region) setCached(cacheKey, result, 24 * 60 * 60 * 1000);
+    console.log('[SO] custom fields resolved strictly for res.users:', JSON.stringify(result));
+    if (result.rep) setCached(cacheKey, result, 24 * 60 * 60 * 1000);
   } catch (e) {
     console.warn('[SO] getSoCustomFields failed:', e.message);
   }
   return result;
 }
 
-// Finds the custom fields on account.move Odoo's list view groups by (e.g. 'مندوب المبيعات', 'المنطقة الجغرافية', 'المدينة')
+// Finds the two specific salesperson fields on account.move strictly related to res.users:
+// 1. Invoice Salesperson: 'مندوب المبيعات'
+// 2. Refund Salesperson: 'مندوب المبيعات (Copy)'
 async function getMoveCustomFields(auth) {
-  const cacheKey = 'move_custom_fields_v4';
+  const cacheKey = 'move_custom_fields_v50';
   const cached = getCached(cacheKey);
   if (cached) return cached;
-  const result = { rep: null, region: null, city: null };
+  const result = { rep: null, invoiceRep: null, refundRep: null };
   try {
     const fields = await odooExecuteKw(auth.uid, auth.password, 'account.move', 'fields_get', [], { attributes: ['string', 'type', 'relation', 'store'] });
-    const entries = Object.entries(fields || {}).filter(([, f]) => f.store !== false && ['many2one', 'char', 'selection'].includes(f.type));
+    const userEntries = Object.entries(fields || {}).filter(([, f]) => f.store !== false && (f.type === 'many2one' || f.type === 'char' || f.type === 'selection'));
 
-    result.region = findMatchingField(entries, ['المنطقة الجغرافية', 'المنطقه الجغرافيه', 'المنطقة', 'المنطقه', 'منطقة جغرافية', 'منطقه جغرافيه', 'منطقة', 'منطقه', 'الإقليم', 'المحافظة', 'region', 'zone']);
-    result.rep = findMatchingField(entries, ['مندوب المبيعات', 'مندوب مبيعات', 'مندوب', 'المندوب', 'مسؤول المبيعات', 'البائع', 'salesperson', 'sales_person', 'rep'], ['invoice_user_id', 'user_id']);
-    result.city = findMatchingField(entries, ['المدينة', 'المدينه', 'مدينة', 'مدينه', 'الفرع', 'city', 'branch']);
+    console.log('[DEBUG all candidate salesperson fields on account.move]:', userEntries.map(([k, v]) => `${k} ("${v.string}", type=${v.type}, rel=${v.relation})`));
+
+    // 1. Invoice Salesperson: Priority to custom Studio field on account.move (x_studio_... / x_...) labeled 'مندوب المبيعات' (without Copy)
+    let invMatch = userEntries.find(([name, f]) => {
+      const isCustom = name.startsWith('x_studio_') || name.startsWith('x_');
+      const s = normalizeArabicLabel(f.string || '');
+      const isCopy = String(f.string || '').toLowerCase().includes('copy') || f.string.includes('نسخة');
+      return isCustom && (s.includes('مندوب') || s.includes('sales')) && !isCopy;
+    });
+
+    if (!invMatch) {
+      invMatch = userEntries.find(([name, f]) => {
+        const s = normalizeArabicLabel(f.string || '');
+        const isCopy = String(f.string || '').toLowerCase().includes('copy') || f.string.includes('نسخة');
+        return (s.includes('مندوب') || s.includes('sales')) && !isCopy && name !== 'invoice_user_id' && name !== 'user_id';
+      });
+    }
+
+    if (!invMatch) {
+      invMatch = userEntries.find(([name, f]) => {
+        const s = normalizeArabicLabel(f.string || '');
+        const isCopy = String(f.string || '').toLowerCase().includes('copy') || f.string.includes('نسخة');
+        return (s.includes('مندوب') || s.includes('sales')) && !isCopy;
+      });
+    }
+
+    if (invMatch) {
+      result.invoiceRep = { name: invMatch[0], type: invMatch[1].type, relation: invMatch[1].relation || null, label: invMatch[1].string };
+    }
+
+    // 2. Refund Salesperson: Priority to custom Studio field labeled 'مندوب المبيعات (Copy)'
+    let refMatch = userEntries.find(([name, f]) => {
+      const isCustom = name.startsWith('x_studio_') || name.startsWith('x_');
+      const s = String(f.string || '').toLowerCase();
+      return isCustom && (s.includes('مندوب') || s.includes('sales')) && (s.includes('copy') || s.includes('نسخة') || s.includes('مرتجع'));
+    });
+
+    if (!refMatch) {
+      refMatch = userEntries.find(([name, f]) => {
+        const s = String(f.string || '').toLowerCase();
+        return (s.includes('مندوب') || s.includes('sales')) && (s.includes('copy') || s.includes('نسخة') || s.includes('مرتجع'));
+      });
+    }
+
+    if (refMatch) {
+      result.refundRep = { name: refMatch[0], type: refMatch[1].type, relation: refMatch[1].relation || null, label: refMatch[1].string };
+    } else {
+      result.refundRep = result.invoiceRep;
+    }
+
+    // Standard fallback if no custom field matched
+    if (!result.invoiceRep) {
+      if (fields?.invoice_user_id) result.invoiceRep = { name: 'invoice_user_id', type: 'many2one', relation: 'res.users', label: fields.invoice_user_id.string || 'مندوب المبيعات' };
+      else if (fields?.user_id) result.invoiceRep = { name: 'user_id', type: 'many2one', relation: 'res.users', label: fields.user_id.string || 'مندوب المبيعات' };
+    }
+    if (!result.refundRep) {
+      result.refundRep = result.invoiceRep;
+    }
+    result.rep = result.invoiceRep;
 
     console.log('[Move] custom fields resolved:', JSON.stringify(result));
-    if (result.rep || result.region) setCached(cacheKey, result, 24 * 60 * 60 * 1000);
+    if (result.invoiceRep) setCached(cacheKey, result, 24 * 60 * 60 * 1000);
   } catch (e) {
     console.warn('[Move] getMoveCustomFields failed:', e.message);
   }
@@ -1613,6 +1538,31 @@ function fieldValue(raw, fallbackName = 'غير محدد') {
   return { key: String(raw), name: String(raw) };
 }
 
+// Strictly extracts the salesperson from the document ONLY without external user fallbacks
+function getMoveRep(m, moveFields) {
+  if (m.move_type === 'out_refund') {
+    const fieldName = moveFields?.refundRep?.name || moveFields?.invoiceRep?.name;
+    if (fieldName && m[fieldName]) {
+      return fieldValue(m[fieldName], 'None');
+    }
+  } else {
+    const fieldName = moveFields?.invoiceRep?.name;
+    if (fieldName && m[fieldName]) {
+      return fieldValue(m[fieldName], 'None');
+    }
+  }
+  return { key: 'None', name: 'None' };
+}
+
+function getSoRep(order, soFields) {
+  const fieldName = soFields?.rep?.name;
+  if (fieldName && order[fieldName]) {
+    return fieldValue(order[fieldName], 'None');
+  }
+  if (order.user_id) return fieldValue(order.user_id, 'None');
+  return { key: 'None', name: 'None' };
+}
+
 function paymentQueryFailedGuard(data) {
   return Boolean(data && data._partial);
 }
@@ -1623,7 +1573,7 @@ async function buildSalesOrderOverview(auth, query) {
   const isDraftStatus = status === 'draft';
 
   const repId = asPositiveId(query.rep);
-  const repName = await getDistinctRepNameById(auth, repId);
+  const repName = await getDistinctRepNameById(auth, repId, 'salesOrder');
   const customerId = asPositiveId(query.customer);
   const productId = asPositiveId(query.product);
   const search = String(query.query || '').toLowerCase();
@@ -1632,16 +1582,15 @@ async function buildSalesOrderOverview(auth, query) {
     getProductCatalog(auth).catch(() => ({ productCatalog: [], categories: [] })),
     getPartnersLookup(auth).catch(() => ({ partnerMap: new Map(), allPartnersList: [] })),
     getOdooTeamTargets(auth).catch(() => new Map()),
-    getSoCustomFields(auth).catch(() => ({ rep: null, region: null, city: null })),
+    getSoCustomFields(auth).catch(() => ({ rep: null, region: null })),
     getDateFacets(auth, 'salesOrder').catch(() => ({}))
   ]);
   const categoryId = resolveCategoryId(query.category, categories);
 
   let allowedPartnerIds = [];
-  if (query.region || query.city) {
+  if (query.region) {
     allowedPartnerIds = [...partners.values()]
-      .filter(p => !query.region || p.state === query.region)
-      .filter(p => !query.city || p.city === query.city)
+      .filter(p => p.odooState === query.region)
       .map(p => p.id);
     if (!allowedPartnerIds.length) allowedPartnerIds = [-1];
   }
@@ -1994,19 +1943,14 @@ async function buildSalesOrderOverview(auth, query) {
 
   orders.forEach(order => {
     const pid = order.partner_id?.[0];
-    const partner = partners.get(pid) || { state: 'غير محدد', city: 'غير محدد', name: order.partner_id?.[1] || 'غير محدد', rep: 'غير محدد' };
+    const partner = partners.get(pid) || { odooState: '', name: order.partner_id?.[1] || 'غير محدد', rep: 'غير محدد' };
     const pQty = partnerQtyMap.get(pid) || { grossQty: 0, returnedQty: 0, netQty: 0 };
     const orderAmt = getOrderAmount(order);
 
-    // Custom Odoo grouping fields if present
-    const customRegVal = soFields?.region?.name ? fieldValue(order[soFields.region.name]) : null;
     const customRepVal = soFields?.rep?.name ? fieldValue(order[soFields.rep.name]) : null;
 
-    const geoKey = (customRegVal && customRegVal.name !== 'غير محدد')
-      ? customRegVal.name
-      : ((partner.city && partner.city !== 'غير محدد') ? partner.city : ((partner.state && partner.state !== 'غير محدد' && partner.state !== 'أخرى / غير محدد') ? partner.state : 'أخرى'));
-    const stateName = partner.state || geoKey;
-    const cityName = partner.city || geoKey;
+    const stateName = partner.odooState || 'غير محدد';
+    const geoKey = stateName;
 
     const repName = customRepVal?.name || 'غير محدد';
     const repId = customRepVal?.key ?? null;
@@ -2016,7 +1960,6 @@ async function buildSalesOrderOverview(auth, query) {
     const reg = regional.get(geoKey) || {
       name: geoKey,
       state: stateName,
-      city: cityName,
       sales: 0,
       gross: 0,
       returns: 0,
@@ -2045,7 +1988,6 @@ async function buildSalesOrderOverview(auth, query) {
       id: pid,
       name: partner.name || order.partner_id?.[1] || 'غير محدد',
       state: stateName,
-      city: cityName,
       geoKey,
       rep: repName,
       repId: repKey,
@@ -2111,7 +2053,7 @@ async function buildSalesOrderOverview(auth, query) {
   // Regional aggregated numbers
   const regionalDataMap = new Map();
   customerRows.forEach(c => {
-    const geoKey = c.geoKey || c.city || c.state || 'أخرى';
+    const geoKey = c.geoKey || c.state || 'أخرى';
     const entry = regionalDataMap.get(geoKey) || { collected: 0, outstanding: 0, grossQty: 0, returnedQty: 0, netQty: 0 };
     entry.collected += c.collected;
     entry.outstanding += c.outstanding;
@@ -2273,7 +2215,7 @@ async function buildSalesOrderOverview(auth, query) {
   let growthAnalysis = {
     source: 'salesOrder',
     regions: regions.map(r => ({ name: r.name, currentSales: r.sales, previousSales: 0, growthAmount: r.sales, growthPercent: 0 })),
-    customers: customerRows.map(c => ({ id: c.id, name: c.name, state: c.state, city: c.city, rep: c.rep, currentSales: c.sales, previousSales: 0, growthAmount: c.sales, growthPercent: 0, lossAmount: 0 })),
+    customers: customerRows.map(c => ({ id: c.id, name: c.name, state: c.state, rep: c.rep, currentSales: c.sales, previousSales: 0, growthAmount: c.sales, growthPercent: 0, lossAmount: 0 })),
     churnWarnings: [],
     topDeclining: [],
     topGrowing: [],
@@ -2334,14 +2276,13 @@ async function buildSalesOrderOverview(auth, query) {
       const pPartner = partners.get(pid);
       const name = c?.name || pPartner?.name || `عميل #${pid}`;
       const state = c?.state || pPartner?.state || 'غير محدد';
-      const city = c?.city || pPartner?.city || 'غير محدد';
       const rep = c?.rep || pPartner?.rep || 'غير محدد';
       const currentSales = round2(c?.sales || 0);
       const pSales = round2(prevPartnerMap.get(pid) || 0);
       const growthAmount = round2(currentSales - pSales);
       const growthPercent = percentChange(currentSales, pSales);
       const lossAmount = Math.max(0, round2(pSales - currentSales));
-      return { id: pid, name, state, city, rep, currentSales, previousSales: pSales, growthAmount, growthPercent, lossAmount };
+      return { id: pid, name, state, rep, currentSales, previousSales: pSales, growthAmount, growthPercent, lossAmount };
     }).sort((a, b) => b.currentSales - a.currentSales);
 
     soChurnWarnings = growthAnalysis.customers
@@ -2434,13 +2375,19 @@ async function buildSalesOrderOverview(auth, query) {
     drilldown: regions.map(reg => ({
       ...reg,
       customers: customerRows
-        .filter(c => c.city === reg.name || c.state === reg.name || c.geoKey === reg.name)
+        .filter(c => c.state === reg.name || c.geoKey === reg.name)
         .sort((a, b) => b.sales - a.sales)
     })),
     filterOptions: {
-      regions: [...new Set(allPartnersList.map(p => p.state))].filter(s => s && s !== 'غير محدد' && s !== 'أخرى / غير محدد' && s !== 'أخرى').sort((a, b) => a.localeCompare(b, 'ar')),
-      cities: [...new Set(allPartnersList.map(p => p.city))].filter(c => c && c !== 'غير محدد').sort((a, b) => a.localeCompare(b, 'ar')),
-      reps: await getDistinctRepsFromDocuments(auth).catch(() => []),
+      regions: (() => {
+        const uniqueStates = [...new Set(allPartnersList.map(p => p.odooState))].filter(Boolean);
+        const namedStates = uniqueStates.filter(s => s !== 'None').sort((a, b) => a.localeCompare(b, 'ar'));
+        if (uniqueStates.includes('None')) {
+          namedStates.push('None');
+        }
+        return namedStates;
+      })(),
+      reps: await getDistinctRepsFromDocuments(auth, 'salesOrder').catch(() => []),
       customers: allPartnersList.map(p => ({ id: p.id, name: p.name })).filter(p => p.name),
       categories: categories || [],
       products: productCatalog || [],
@@ -2452,8 +2399,9 @@ async function buildSalesOrderOverview(auth, query) {
 async function buildSalesInvoiceOverview(auth, query) {
   const { start, end, year } = getDateRange(query);
 
-  const repId = asPositiveId(query.rep);
-  const repName = await getDistinctRepNameById(auth, repId);
+  const isNoneRep = String(query.rep || '').trim() === 'None';
+  const repId = isNoneRep ? 'None' : asPositiveId(query.rep);
+  const repName = isNoneRep ? 'None' : await getDistinctRepNameById(auth, repId, 'postedInvoice');
   const customerId = asPositiveId(query.customer);
   const productId = asPositiveId(query.product);
   const search = String(query.query || '').toLowerCase();
@@ -2462,16 +2410,15 @@ async function buildSalesInvoiceOverview(auth, query) {
     getPartnersLookup(auth).catch(() => ({ partnerMap: new Map(), allPartnersList: [] })),
     getProductCatalog(auth).catch(() => ({ productCatalog: [], categories: [] })),
     getOdooTeamTargets(auth).catch(() => new Map()),
-    getMoveCustomFields(auth).catch(() => ({ rep: null, region: null, city: null })),
+    getMoveCustomFields(auth).catch(() => ({ rep: null, region: null })),
     getDateFacets(auth, 'postedInvoice').catch(() => ({}))
   ]);
   const categoryId = resolveCategoryId(query.category, categories);
 
   let allowedPartnerIds = [];
-  if (query.region || query.city) {
+  if (query.region) {
     allowedPartnerIds = allPartnersList
-      .filter(p => !query.region || p.state === query.region || p.city === query.region)
-      .filter(p => !query.city || p.city === query.city)
+      .filter(p => p.odooState === query.region)
       .map(p => p.id);
     if (!allowedPartnerIds.length) allowedPartnerIds = [-1];
   }
@@ -2483,8 +2430,28 @@ async function buildSalesInvoiceOverview(auth, query) {
     ['invoice_date', '>=', start],
     ['invoice_date', '<=', end]
   ];
-  if (repId) {
-    appendSalespersonFilter(moveDomain, moveFields?.rep, repId, repName);
+  if (isNoneRep) {
+    const invFieldName = moveFields?.invoiceRep?.name || 'invoice_user_id';
+    const refFieldName = moveFields?.refundRep?.name || invFieldName;
+    moveDomain.push('|');
+    moveDomain.push('&');
+    moveDomain.push(['move_type', '=', 'out_invoice']);
+    moveDomain.push([invFieldName, '=', false]);
+    moveDomain.push('&');
+    moveDomain.push(['move_type', '=', 'out_refund']);
+    moveDomain.push([refFieldName, '=', false]);
+  } else if (repId || repName) {
+    const invFieldName = moveFields?.invoiceRep?.name || 'invoice_user_id';
+    const refFieldName = moveFields?.refundRep?.name || invFieldName;
+    const isM2o = moveFields?.invoiceRep?.type === 'many2one';
+    const targetVal = isM2o && typeof repId === 'number' ? repId : (repName || repId);
+    moveDomain.push('|');
+    moveDomain.push('&');
+    moveDomain.push(['move_type', '=', 'out_invoice']);
+    moveDomain.push([invFieldName, '=', targetVal]);
+    moveDomain.push('&');
+    moveDomain.push(['move_type', '=', 'out_refund']);
+    moveDomain.push([refFieldName, '=', targetVal]);
   }
   if (customerId) moveDomain.push(['partner_id', '=', customerId]);
   else if (allowedPartnerIds.length) moveDomain.push(['partner_id', 'in', allowedPartnerIds]);
@@ -2511,9 +2478,28 @@ async function buildSalesInvoiceOverview(auth, query) {
     ['date', '>=', start],
     ['date', '<=', end]
   ];
-  if (repId) {
-    const lineRepField = moveFields?.rep ? { ...moveFields.rep, name: `move_id.${moveFields.rep.name}` } : null;
-    appendSalespersonFilter(lineDomain, lineRepField, repId, repName);
+  if (isNoneRep) {
+    const invFieldName = moveFields?.invoiceRep?.name ? `move_id.${moveFields.invoiceRep.name}` : 'move_id.invoice_user_id';
+    const refFieldName = moveFields?.refundRep?.name ? `move_id.${moveFields.refundRep.name}` : invFieldName;
+    lineDomain.push('|');
+    lineDomain.push('&');
+    lineDomain.push(['move_id.move_type', '=', 'out_invoice']);
+    lineDomain.push([invFieldName, '=', false]);
+    lineDomain.push('&');
+    lineDomain.push(['move_id.move_type', '=', 'out_refund']);
+    lineDomain.push([refFieldName, '=', false]);
+  } else if (repId || repName) {
+    const invFieldName = moveFields?.invoiceRep?.name ? `move_id.${moveFields.invoiceRep.name}` : 'move_id.invoice_user_id';
+    const refFieldName = moveFields?.refundRep?.name ? `move_id.${moveFields.refundRep.name}` : invFieldName;
+    const isM2o = moveFields?.invoiceRep?.type === 'many2one';
+    const targetVal = isM2o && typeof repId === 'number' ? repId : (repName || repId);
+    lineDomain.push('|');
+    lineDomain.push('&');
+    lineDomain.push(['move_id.move_type', '=', 'out_invoice']);
+    lineDomain.push([invFieldName, '=', targetVal]);
+    lineDomain.push('&');
+    lineDomain.push(['move_id.move_type', '=', 'out_refund']);
+    lineDomain.push([refFieldName, '=', targetVal]);
   }
   if (customerId) lineDomain.push(['move_id.partner_id', '=', customerId]);
   else if (allowedPartnerIds.length) lineDomain.push(['move_id.partner_id', 'in', allowedPartnerIds]);
@@ -2544,9 +2530,8 @@ async function buildSalesInvoiceOverview(auth, query) {
   const previousRange = comparisonRange(start, end, query.comparison || 'previousPeriod');
 
   const moveFieldsToFetch = ['id', 'name', 'invoice_date', 'date', 'move_type', 'partner_id', 'invoice_user_id', 'user_id', 'amount_total', 'amount_untaxed', 'amount_residual', 'state', 'ref'];
-  if (moveFields?.rep?.name && !moveFieldsToFetch.includes(moveFields.rep.name)) moveFieldsToFetch.push(moveFields.rep.name);
-  if (moveFields?.region?.name && !moveFieldsToFetch.includes(moveFields.region.name)) moveFieldsToFetch.push(moveFields.region.name);
-  if (moveFields?.city?.name && !moveFieldsToFetch.includes(moveFields.city.name)) moveFieldsToFetch.push(moveFields.city.name);
+  if (moveFields?.invoiceRep?.name && !moveFieldsToFetch.includes(moveFields.invoiceRep.name)) moveFieldsToFetch.push(moveFields.invoiceRep.name);
+  if (moveFields?.refundRep?.name && !moveFieldsToFetch.includes(moveFields.refundRep.name)) moveFieldsToFetch.push(moveFields.refundRep.name);
 
   // Single Parallel Batch: Moves search_read + fast SQL aggregates (<300ms total)
   const [
@@ -2736,10 +2721,10 @@ async function buildSalesInvoiceOverview(auth, query) {
   // 4. Sales Reps Performance
   const repsMap = new Map();
   moves.forEach(m => {
-    const customRepVal = moveFields?.rep?.name ? fieldValue(m[moveFields.rep.name]) : null;
-    const repId = customRepVal?.key ?? null;
-    const repName = customRepVal?.name || 'غير محدد';
-    const key = normalizeArabicLabel(repName) || (repId !== null ? String(repId) : 'unassigned');
+    const repVal = getMoveRep(m, moveFields);
+    const repId = repVal?.key ?? 'None';
+    const repName = repVal?.name || 'None';
+    const key = repName === 'None' ? 'None' : (normalizeArabicLabel(repName) || String(repId));
     const entry = repsMap.get(key) || {
       id: repId,
       name: repName,
@@ -2772,12 +2757,12 @@ async function buildSalesInvoiceOverview(auth, query) {
   const repsList = [...repsMap.values()].map(r => {
     const grossAmt = round2(r.gross);
     const returnsAmt = round2(r.returns);
-    const achieved = Math.max(0, round2(grossAmt - returnsAmt));
-    const remaining = Math.max(0, round2(r.remaining));
+    const achieved = round2(grossAmt - returnsAmt);
+    const remaining = round2(r.remaining);
     const repCollected = Math.min(achieved, Math.max(0, round2(achieved - remaining)));
     const repRemaining = Math.max(0, round2(achieved - repCollected));
 
-    const targetFromOdoo = r.id ? odooTargetMap?.get(r.id) : null;
+    const targetFromOdoo = (r.id && r.id !== 'None') ? odooTargetMap?.get(r.id) : null;
     const hasTarget = Boolean(targetFromOdoo && Number(targetFromOdoo) > 0);
     const target = hasTarget ? round2(targetFromOdoo) : null;
     const targetPercentage = hasTarget ? Number((achieved / target * 100).toFixed(1)) : null;
@@ -2803,7 +2788,7 @@ async function buildSalesInvoiceOverview(auth, query) {
       count: r.count,
       invoicesCount: r.invoicesCount,
       returnsCount: r.returnsCount,
-      kpi: achieved > 0 ? 'مبيعات مؤكدة' : 'بدون مبيعات'
+      kpi: achieved > 0 ? 'مبيعات مؤكدة' : (achieved < 0 ? 'مرتجعات صافية' : 'بدون مبيعات')
     };
   }).sort((a, b) => b.achieved - a.achieved);
 
@@ -2828,22 +2813,13 @@ async function buildSalesInvoiceOverview(auth, query) {
     if (!m.partner_id) return;
     const pId = m.partner_id[0];
     const pName = m.partner_id[1];
-    const customRepVal = moveFields?.rep?.name ? fieldValue(m[moveFields.rep.name]) : null;
-    const repId = customRepVal?.key ?? null;
-    const repName = customRepVal?.name || 'غير محدد';
+    const repVal = getMoveRep(m, moveFields);
+    const repId = repVal?.key ?? null;
+    const repName = repVal?.name || 'غير محدد';
 
-    const customRegVal = moveFields?.region?.name ? fieldValue(m[moveFields.region.name]) : null;
-    const customCityVal = moveFields?.city?.name ? fieldValue(m[moveFields.city.name]) : null;
-
-    const info = partnerMap.get(pId) || { state: 'أخرى', city: 'غير محدد', rep: 'غير محدد' };
-
-    const cityName = (customCityVal && customCityVal.name !== 'غير محدد')
-      ? customCityVal.name
-      : ((info.city && info.city !== 'غير محدد') ? info.city : ((info.state && info.state !== 'أخرى / غير محدد' && info.state !== 'غير محدد') ? info.state : 'أخرى'));
-    const stateName = (customRegVal && customRegVal.name !== 'غير محدد')
-      ? customRegVal.name
-      : ((info.state && info.state !== 'أخرى / غير محدد' && info.state !== 'غير محدد') ? info.state : cityName);
-    const geoKey = (customRegVal && customRegVal.name !== 'غير محدد') ? customRegVal.name : cityName;
+    const info = partnerMap.get(pId) || { odooState: 'None', rep: 'غير محدد' };
+    const stateName = info.odooState || 'None';
+    const geoKey = stateName;
 
     const amt = Math.abs(Number(m.amount_total)) || 0;
     const res = Math.abs(Number(m.amount_residual)) || 0;
@@ -2853,7 +2829,6 @@ async function buildSalesInvoiceOverview(auth, query) {
       id: pId,
       name: pName,
       state: stateName,
-      city: cityName,
       geoKey,
       rep: repName,
       gross: 0,
@@ -2874,7 +2849,6 @@ async function buildSalesInvoiceOverview(auth, query) {
       repId,
       name: pName,
       state: stateName,
-      city: cityName,
       geoKey,
       rep: repName,
       gross: 0,
@@ -2909,7 +2883,6 @@ async function buildSalesInvoiceOverview(auth, query) {
       regionalTotals[geoKey] = {
         name: geoKey,
         state: stateName,
-        city: cityName,
         sales: 0,
         gross: 0,
         returns: 0,
@@ -3010,7 +2983,7 @@ async function buildSalesInvoiceOverview(auth, query) {
       const sampleLines = await odooExecuteKw(auth.uid, auth.password, 'account.move.line', 'search_read', [
         [['move_id', 'in', topMoveIds], ['product_id', '!=', false]]
       ], { fields: ['product_id', 'price_subtotal', 'quantity'], limit: 2000 }).catch(() => []);
-      
+
       const fallbackProdMap = new Map();
       (sampleLines || []).forEach(l => {
         if (!l.product_id) return;
@@ -3128,7 +3101,7 @@ async function buildSalesInvoiceOverview(auth, query) {
   let growthAnalysis = {
     source: 'postedInvoice',
     regions: regionalList.map(r => ({ name: r.name, currentSales: r.sales, previousSales: 0, growthAmount: r.sales, growthPercent: 0 })),
-    customers: customerBreakdown.map(c => ({ id: c.id, name: c.name, state: c.state, city: c.city, rep: c.rep, currentSales: c.sales, previousSales: 0, growthAmount: c.sales, growthPercent: 0, lossAmount: 0 })),
+    customers: customerBreakdown.map(c => ({ id: c.id, name: c.name, state: c.state, rep: c.rep, currentSales: c.sales, previousSales: 0, growthAmount: c.sales, growthPercent: 0, lossAmount: 0 })),
     churnWarnings: [],
     topDeclining: [],
     topGrowing: [],
@@ -3199,14 +3172,13 @@ async function buildSalesInvoiceOverview(auth, query) {
       const pPartner = partnerMap.get(pid);
       const name = c?.name || pPartner?.name || `عميل #${pid}`;
       const state = c?.state || pPartner?.state || 'غير محدد';
-      const city = c?.city || pPartner?.city || 'غير محدد';
       const rep = c?.rep || pPartner?.rep || 'غير محدد';
       const currentSales = round2(c?.sales || 0);
       const pSales = round2(Math.max(0, prevPartnerMap.get(pid) || 0));
       const growthAmount = round2(currentSales - pSales);
       const growthPercent = percentChange(currentSales, pSales);
       const lossAmount = Math.max(0, round2(pSales - currentSales));
-      return { id: pid, name, state, city, rep, currentSales, previousSales: pSales, growthAmount, growthPercent, lossAmount };
+      return { id: pid, name, state, rep, currentSales, previousSales: pSales, growthAmount, growthPercent, lossAmount };
     }).sort((a, b) => b.currentSales - a.currentSales);
 
     churnWarnings = growthAnalysis.customers
@@ -3294,8 +3266,14 @@ async function buildSalesInvoiceOverview(auth, query) {
     customerBreakdown,
     drilldown: customerBreakdown,
     filterOptions: {
-      regions: [...new Set([...allPartnersList.map(p => p.state), ...regionalList.map(r => r.name)])].filter(s => s && s !== 'غير محدد' && s !== 'أخرى / غير محدد' && s !== 'أخرى').sort((a, b) => a.localeCompare(b, 'ar')),
-      cities: [...new Set(allPartnersList.map(p => p.city))].filter(c => c && c !== 'غير محدد').sort((a, b) => a.localeCompare(b, 'ar')),
+      regions: (() => {
+        const uniqueStates = [...new Set(allPartnersList.map(p => p.odooState))].filter(Boolean);
+        const namedStates = uniqueStates.filter(s => s !== 'None').sort((a, b) => a.localeCompare(b, 'ar'));
+        if (uniqueStates.includes('None')) {
+          namedStates.push('None');
+        }
+        return namedStates;
+      })(),
       reps: await getDistinctRepsFromDocuments(auth, 'postedInvoice').catch(() => []),
       customers: allPartnersList.map(p => ({ id: p.id, name: p.name })).filter(p => p.name),
       categories: categories || [],
@@ -3306,15 +3284,19 @@ async function buildSalesInvoiceOverview(auth, query) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Unified Dashboard Overview API
+// Source-specific Dashboard Overview APIs
 // ─────────────────────────────────────────────────────────────
-app.get('/api/dashboard/overview', async (req, res) => {
+async function serveDashboardOverview(req, res, forcedSource = null, cacheNamespace = 'overview') {
+  const source = forcedSource || (req.query.source === 'salesOrder' ? 'salesOrder' : 'postedInvoice');
+  const query = { ...req.query, source };
+  let auth = null;
+  let cacheKey = null;
   try {
-    const auth = await getAuthCredentials(req);
+    auth = await getAuthCredentials(req);
     if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
 
-    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
-    const cacheKey = normalizeCacheKey('overview', auth.uid, req.query);
+    const forceRefresh = query.refresh === '1' || query.refresh === 'true';
+    cacheKey = normalizeCacheKey(cacheNamespace, auth.uid, query);
 
     if (!forceRefresh) {
       const cached = getCached(cacheKey);
@@ -3325,22 +3307,17 @@ app.get('/api/dashboard/overview', async (req, res) => {
     }
     res.setHeader('X-Cache', 'MISS');
 
-    let payload;
-    if (req.query.source === 'salesOrder') {
-      payload = await buildSalesOrderOverview(auth, req.query);
-    } else {
-      payload = await buildSalesInvoiceOverview(auth, req.query);
-    }
+    const payload = source === 'salesOrder'
+      ? await buildSalesOrderOverview(auth, query)
+      : await buildSalesInvoiceOverview(auth, query);
 
-    const ttl = getAdaptiveOverviewTTL(req.query);
+    const ttl = getAdaptiveOverviewTTL(query);
     setCached(cacheKey, payload, ttl);
     return res.json(payload);
   } catch (error) {
-    console.error('Error fetching dashboard overview:', error);
+    console.error(`Error fetching ${source} dashboard overview:`, error);
     try {
-      const auth = await getAuthCredentials(req);
-      if (auth) {
-        const cacheKey = normalizeCacheKey('overview', auth.uid, req.query);
+      if (auth && cacheKey) {
         const stale = getCached(cacheKey);
         if (stale) {
           res.setHeader('X-Cache', 'STALE-FALLBACK');
@@ -3351,21 +3328,34 @@ app.get('/api/dashboard/overview', async (req, res) => {
           });
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const friendlyError = sanitizeErrorMessage(error);
     return res.status(500).json({ error: friendlyError, code: 'ODOO_SERVER_ERROR' });
   }
-});
+}
+
+app.get('/api/dashboard/posted-invoices/overview', (req, res) =>
+  serveDashboardOverview(req, res, 'postedInvoice', 'overview_posted_invoices')
+);
+
+app.get('/api/dashboard/sales-orders/overview', (req, res) =>
+  serveDashboardOverview(req, res, 'salesOrder', 'overview_sales_orders')
+);
+
+app.get('/api/dashboard/overview', (req, res) =>
+  serveDashboardOverview(req, res)
+);
 
 // ─────────────────────────────────────────────────────────────
-app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
+async function handleDashboardKpiDrilldown(req, res, forcedSource = null) {
   try {
     const auth = await getAuthCredentials(req);
     if (!auth) return res.status(401).json({ error: 'يرجى تسجيل الدخول' });
 
     const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
-    const cacheKey = normalizeCacheKey('drilldown', auth.uid, req.query);
+    const queryForCache = forcedSource ? { ...req.query, source: forcedSource } : req.query;
+    const cacheKey = normalizeCacheKey('drilldown', auth.uid, queryForCache);
 
     if (!forceRefresh) {
       const cached = getCached(cacheKey);
@@ -3377,29 +3367,25 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
     res.setHeader('X-Cache', 'MISS');
 
     const kpi = String(req.query.kpi || 'gross').trim();
-    const source = String(req.query.source || 'postedInvoice').trim();
+    const source = forcedSource || String(req.query.source || 'postedInvoice').trim();
     const { start, end } = getDateRange(req.query);
 
-    // 1. Partner State & City Lookup Map and Product Catalog (from shared cache)
+    // 1. Partner State Lookup Map and Product Catalog (from shared cache)
     const [{ partnerMap, allPartnersList }, { categories }] = await Promise.all([
       getPartnersLookup(auth),
       getProductCatalog(auth)
     ]);
 
     const repId = asPositiveId(req.query.rep);
-    const repName = await getDistinctRepNameById(auth, repId);
+    const repName = await getDistinctRepNameById(auth, repId, source);
     const customerId = asPositiveId(req.query.customer);
     const productId = asPositiveId(req.query.product);
     const categoryId = resolveCategoryId(req.query.category, categories);
 
     let allowedPartnerIds = [];
-    if (req.query.region || req.query.city) {
+    if (req.query.region) {
       allowedPartnerIds = allPartnersList
-        .filter(p => {
-          if (req.query.region && p.state !== req.query.region) return false;
-          if (req.query.city && p.city !== req.query.city) return false;
-          return true;
-        })
+        .filter(p => p.odooState === req.query.region)
         .map(p => p.id);
       if (!allowedPartnerIds.length) allowedPartnerIds = [-1];
     }
@@ -3513,7 +3499,6 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
           customer: p.partner_id ? p.partner_id[1] : (pInfo ? pInfo.name : 'عميل غير محدد'),
           rep: pInfo?.rep || 'غير محدد',
           region: pInfo ? pInfo.state : 'غير محدد',
-          city: pInfo ? pInfo.city : 'غير محدد',
           date: p.date ? String(p.date).split(' ')[0] : '',
           ref: refNote,
           amount: signedAmt,
@@ -3692,7 +3677,6 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
             customer: m.partner_id ? m.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
             rep: [...(orderIdsByCreditNote.get(m.id) || [])].join('، ') || 'غير محدد',
             region: pInfo ? pInfo.state : 'غير محدد',
-            city: pInfo ? pInfo.city : 'غير محدد',
             date: m.invoice_date || (m.date ? String(m.date).split(' ')[0] : ''),
             amount: round2(rawTotal),
             returnedQty: round2(returnQtyByMoveId.get(m.id) || 0),
@@ -3729,7 +3713,7 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
       }
 
       const status = String(req.query.salesOrderStatus || 'all').toLowerCase();
-      const soCustom = await getSoCustomFields(auth).catch(() => ({ rep: null, region: null, city: null }));
+      const soCustom = await getSoCustomFields(auth).catch(() => ({ rep: null, region: null }));
       const soUtcRange = cairoUtcRange(start, end);
       const soDomain = [
         ['date_order', '>=', soUtcRange.from],
@@ -3878,7 +3862,6 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
           customer: o.partner_id ? o.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
           rep: soCustom.rep ? fieldValue(o[soCustom.rep.name]).name : 'غير محدد',
           region: soCustom.region ? fieldValue(o[soCustom.region.name]).name : (pInfo ? pInfo.state : 'غير محدد'),
-          city: soCustom.region ? fieldValue(o[soCustom.region.name]).name : (pInfo ? pInfo.city : 'غير محدد'),
           date: o.date_order ? cairoDateOf(o.date_order) : '',
           amount: round2(o.amount_total || 0),
           paid: payInfo.paid,
@@ -4004,7 +3987,7 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
       const isRefund = m.move_type === 'out_refund';
       const rawTotal = Math.abs(Number(m.amount_total_signed !== undefined && m.amount_total_signed !== null ? m.amount_total_signed : m.amount_total) || 0);
       const rawResidual = Math.abs(Number(m.amount_residual !== undefined && m.amount_residual !== null ? m.amount_residual : 0) || 0);
-      
+
       const isPaidOrInPayment = ['paid', 'in_payment', 'inpayment', 'reversed'].includes(m.payment_state) || rawResidual === 0;
       const paid = isPaidOrInPayment ? rawTotal : Math.max(0, rawTotal - rawResidual);
       const residual = Math.max(0, rawTotal - paid);
@@ -4022,7 +4005,6 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
         customer: m.partner_id ? m.partner_id[1] : (pInfo ? pInfo.name : 'غير محدد'),
         rep: customRep?.name || 'غير محدد',
         region: pInfo ? pInfo.state : 'غير محدد',
-        city: pInfo ? pInfo.city : 'غير محدد',
         date: m.invoice_date || m.date || '',
         ref: m.ref || '',
         amount: round2(rawTotal),
@@ -4091,7 +4073,19 @@ app.get('/api/dashboard/kpi-drilldown', async (req, res) => {
     const friendlyError = sanitizeErrorMessage(err);
     res.status(500).json({ error: friendlyError, code: 'DRILLDOWN_ERROR' });
   }
-});
+}
+
+app.get('/api/dashboard/posted-invoices/kpi-drilldown', (req, res) =>
+  handleDashboardKpiDrilldown(req, res, 'postedInvoice')
+);
+
+app.get('/api/dashboard/sales-orders/kpi-drilldown', (req, res) =>
+  handleDashboardKpiDrilldown(req, res, 'salesOrder')
+);
+
+app.get('/api/dashboard/kpi-drilldown', (req, res) =>
+  handleDashboardKpiDrilldown(req, res)
+);
 
 // Always listen if not running in Vercel Serverless environment
 if (!process.env.VERCEL) {

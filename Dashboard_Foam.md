@@ -313,10 +313,6 @@
       background: #EEF2F6 !important;
       color: #0F172A !important;
     }
-    [data-theme="light"] tbody tr.level-city {
-      background: #F8FAFC !important;
-      color: #1E293B !important;
-    }
     [data-theme="light"] tbody tr.level-rep {
       background: #F0F4FF !important;
       color: #312E81 !important;
@@ -327,9 +323,6 @@
     }
     [data-theme="light"] .row-name.state {
       color: #0F172A !important;
-    }
-    [data-theme="light"] .row-name.city {
-      color: #1E293B !important;
     }
     [data-theme="light"] .row-name.rep {
       color: #4338CA !important;
@@ -1562,7 +1555,6 @@
     }
     tbody tr:hover { background: var(--ks-graphite) !important; }
     tbody tr.level-state { background: rgba(30, 41, 59, 0.65); font-weight: 600; }
-    tbody tr.level-city  { background: rgba(30, 41, 59, 0.4); font-weight: 600; }
     tbody tr.level-rep   { background: rgba(49, 46, 129, 0.3); font-weight: 600; }
     tbody tr.level-cust  { background: transparent; }
 
@@ -1591,7 +1583,6 @@
     .row-icon { font-size: 15px; flex-shrink: 0; }
     .row-name { font-weight: 600; }
     .row-name.state { color: var(--ks-champagne); font-size: 14px; font-weight: 700; }
-    .row-name.city  { color: var(--ks-text-warm); font-size: 13.5px; font-weight: 600; }
     .row-name.rep   { color: #a5b4fc; font-size: 13px; font-weight: 600; }
     .row-name.cust  { color: var(--ks-text-muted); font-size: 12.5px; }
     .row-subrep { font-size: 11px; color: var(--ks-text-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
@@ -1735,6 +1726,19 @@
       background-color: var(--ddl-bg) !important;
       color: var(--ddl-text) !important;
       opacity: 1 !important;
+    }
+    .source-tabs { display:flex; align-items:center; gap:3px; padding:3px; border-radius:6px; background:var(--ks-graphite); }
+    .source-tab { border:0; border-radius:4px; padding:7px 12px; background:transparent; color:var(--text3); font:inherit; font-size:12px; font-weight:700; white-space:nowrap; cursor:pointer; }
+    .source-tab[aria-selected="true"] { background:var(--ks-kinpaku); color:#fff; }
+    .source-tab:focus-visible { outline:2px solid var(--ks-patina); outline-offset:2px; }
+    @media (max-width:600px) {
+      .filter-bar { padding:8px 12px; gap:8px; }
+      .date-tabs { flex:1 1 100%; width:100%; max-width:100%; min-width:0; overflow-x:auto; }
+      .date-tab { flex:0 0 auto; padding:5px 10px; }
+      .source-control { flex:1 1 100%; width:100%; min-width:0; flex-wrap:wrap; }
+      .source-tabs { flex:1 1 auto; min-width:0; }
+      .source-tab { flex:1 1 0; min-width:0; padding:7px 6px; white-space:normal; text-align:center; }
+      .source-control #salesOrderStatusFilter:not([hidden]) { flex:1 1 100%; width:100%; max-width:100%; min-width:0; }
     }
     .source-note::before { content:'●'; font-size:9px; }
     .custom-date {
@@ -2106,11 +2110,9 @@
     </select>
 
     <!-- Filters -->
-    <select class="filter-select" id="regionFilter" onchange="markFiltersPending()">
-      <option value="">جميع المناطق</option>
+    <select class="filter-select" id="regionFilter" onchange="markFiltersPending()" aria-label="محافظة العميل">
+      <option value="">جميع المحافظات</option>
     </select>
-
-    <select class="filter-select" id="cityFilter" onchange="markFiltersPending()"><option value="">جميع المدن</option></select>
 
     <select class="filter-select" id="repFilter" onchange="markFiltersPending()">
       <option value="">جميع المندوبين</option>
@@ -2134,10 +2136,14 @@
 
     <!-- Data source -->
     <div class="source-control" aria-label="مصدر البيانات">
-      <span>المصدر</span>
-      <select id="dataSourceFilter" onchange="onDataSourceChange()" aria-label="مصدر البيانات">
-        <option value="postedInvoice">Posted Invoice (الفاتورة المعتمدة)</option>
-        <option value="salesOrder">Sales Order (أمر المبيعات)</option>
+      <span>الصفحة</span>
+      <div class="source-tabs" id="dashboardPageTabs" role="tablist" aria-label="صفحات لوحة المبيعات">
+        <button type="button" id="postedInvoiceTab" class="source-tab" role="tab" aria-selected="true" aria-controls="dashboardPagePanel" data-source="postedInvoice" onclick="onDashboardPageChange('postedInvoice', this)">الفواتير المعتمدة</button>
+        <button type="button" id="salesOrderTab" class="source-tab" role="tab" aria-selected="false" aria-controls="dashboardPagePanel" data-source="salesOrder" tabindex="-1" onclick="onDashboardPageChange('salesOrder', this)">أوامر البيع</button>
+      </div>
+      <select id="dataSourceFilter" aria-label="مصدر البيانات" hidden>
+        <option value="postedInvoice">الفواتير المعتمدة</option>
+        <option value="salesOrder">أوامر البيع</option>
       </select>
       <select id="salesOrderStatusFilter" onchange="onSalesOrderStatusChange()" aria-label="حالة أمر المبيعات" hidden>
         <option value="all" selected>All (Post and Draft) - الكل</option>
@@ -2162,7 +2168,7 @@
 </header>
 
 <!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
-<main class="main" style="position:relative;z-index:1;">
+<main class="main" id="dashboardPagePanel" role="tabpanel" aria-labelledby="postedInvoiceTab" tabindex="0" style="position:relative;z-index:1;">
 
   <!-- ─── Professional Alert / Error Banner ─── -->
   <div id="dashboardAlertBanner" class="alert-banner" role="alert" aria-live="assertive" hidden>
@@ -2353,7 +2359,7 @@
             <div class="chart-title">التوزيع الجغرافي</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
-            <span id="geoChartCountBadge" style="font-size:11px;color:var(--text3);">📍 المدن والمناطق</span>
+            <span id="geoChartCountBadge" style="font-size:11px;color:var(--text3);">📍 المحافظات</span>
             <button class="tbl-export-btn" onclick="exportGeoChartToExcel()" style="font-size:11px;padding:4px 10px;" title="تصدير إلى Excel">📥 Excel</button>
           </div>
         </div>
@@ -2453,7 +2459,7 @@
     <div class="section-header">
       <div class="section-bar" style="background:linear-gradient(to bottom,#06b6d4,#14b8a6);"></div>
       <h2 class="section-title">تقرير المبيعات التفصيلي</h2>
-      <span class="section-sub">المحافظة → المدينة → العميل → المندوب</span>
+      <span class="section-sub">المحافظة → المندوب → العميل</span>
     </div>
 
     <div class="table-card">
@@ -2464,7 +2470,7 @@
           <span class="table-hint">— انقر على الصف لتوسيعه</span>
         </div>
         <div class="table-toolbar-right">
-          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع" onchange="onGroupByFilterChange()"><option value="region" selected>المنطقة</option><option value="city" selected>المدينة</option><option value="rep" selected>المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
+          <select id="groupByFilter" class="filter-select" multiple size="1" aria-label="التجميع" onchange="onGroupByFilterChange()"><option value="region" selected>المحافظة</option><option value="rep" selected>المندوب</option><option value="customer">العميل</option><option value="category">الفئة</option><option value="product">المنتج</option></select>
           <button class="tbl-btn" onclick="toggleRepSort()">ترتيب المندوبين</button>
           <button class="tbl-btn" onclick="expandAll()">توسيع الكل</button>
           <button class="tbl-btn" onclick="collapseAll()">طي الكل</button>
@@ -2516,7 +2522,6 @@
       <div class="table-legend">
         <span style="font-size:10px;font-weight:700;color:var(--text3);">الرمز:</span>
         <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div> محافظة</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#06b6d4;"></div> مدينة</div>
         <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div> عميل</div>
         <div class="legend-item" style="margin-right:auto;">⚠️ نسبة تحصيل منخفضة (&lt;٧٠٪)</div>
       </div>
@@ -2684,7 +2689,7 @@
 
       <!-- Filter Controls & Search -->
       <div class="modal-search-row">
-        <input type="text" id="kpiDrilldownSearch" placeholder="بحث برقم الفاتورة، اسم العميل، المندوب، أو المدينة..." class="filter-select" style="flex:1;min-width:220px;" oninput="filterKpiDrilldownTable()" />
+        <input type="text" id="kpiDrilldownSearch" placeholder="بحث برقم الفاتورة، اسم العميل، المندوب، أو المحافظة..." class="filter-select" style="flex:1;min-width:220px;" oninput="filterKpiDrilldownTable()" />
         <select id="kpiDrilldownStatusFilter" class="filter-select" onchange="filterKpiDrilldownTable()">
           <option value="all">جميع حالات السداد</option>
           <option value="paid">مدفوع بالكامل</option>
@@ -2706,7 +2711,7 @@
               <th>النوع</th>
               <th>العميل</th>
               <th>المندوب</th>
-              <th>المنطقة / المدينة</th>
+              <th>المحافظة</th>
               <th>تاريخ المستند</th>
               <th>إجمالي القيمة</th>
               <th>المسدد</th>
